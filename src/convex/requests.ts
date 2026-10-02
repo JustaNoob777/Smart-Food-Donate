@@ -138,14 +138,16 @@ export const approve = mutation({
 export const advanceStep = mutation({
   args: { ref: v.number() },
   handler: async (ctx, { ref }) => {
-    const { userId, user } = await requireUser(ctx);
+    const { user } = await requireUser(ctx);
     const requests = await ctx.db.query("requests").collect();
     const target = requests.find((r) => r.ref === ref);
     if (!target) throw new Error("Request not found.");
 
-    const isAdmin = user.accountType === "admin";
-    if (target.ngoId !== userId && !isAdmin) {
-      throw new Error("Only the requesting NGO can update this delivery.");
+    // Role rule: donors can never move a delivery — only NGO or admin accounts.
+    // (Seeded partner NGOs have no signed-in account, so any NGO may co-ordinate
+    // their hand-over in this demo.)
+    if (user.accountType !== "ngo" && user.accountType !== "admin") {
+      throw new Error("Only an NGO or admin can update this delivery.");
     }
     if (target.status === "DELIVERED") throw new Error("Already delivered.");
     if (target.step >= DELIVERY_STEPS.length - 1) throw new Error("Route already complete.");

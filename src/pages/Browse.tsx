@@ -58,7 +58,7 @@ export default function Browse() {
   const [quantity, setQuantity] = useState("1");
   const [submitting, setSubmitting] = useState(false);
 
-  const all: Donation[] = donations ?? [];
+  const all: Donation[] = useMemo(() => donations ?? [], [donations]);
 
   /* ---- Order the board through the C binary min-heap (fallback: server order) ---- */
   const [heapOrder, setHeapOrder] = useState<number[] | null>(null);

@@ -1,11 +1,11 @@
 {
-  "name": "freebuff.com application",
-  "short_name": "freebuff.com",
-  "description": "freebuff.com application",
+  "name": "FoodShare — Share Food, Share Hope",
+  "short_name": "FoodShare",
+  "description": "Connects food donors with NGOs and volunteers. C backend with stack, queue, priority queue, linked list, BST and graph operations.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#000000",
+  "background_color": "#f4ede2",
+  "theme_color": "#e9a23b",
   "icons": [
     {
       "src": "/logo.svg",

@@ -48,14 +48,7 @@ export const requestStatusValidator = v.union(
   v.literal("DELIVERED"),
 );
 
-/* Delivery timeline steps — a linked list: each step points at the next. */
-export const DELIVERY_STEPS = [
-  "Request Received",
-  "Assigned to Volunteer",
-  "Picked Up",
-  "Out for Delivery",
-  "Delivered",
-] as const;
+/* Delivery timeline steps live in src/lib/constants.ts (shared with the UI). */
 
 const schema = defineSchema(
   {
