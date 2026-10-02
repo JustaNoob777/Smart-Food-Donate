@@ -1,4 +1,15 @@
 .env.local
+.env.keys
 node_modules
 dist
 src/convex/_generated
+
+# C backend build artifacts
+c-backend/foodshare-server
+c-backend/ds_tests
+
+# editor / OS noise
+.DS_Store
+*.log
+.vscode/*
+!.vscode/extensions.json

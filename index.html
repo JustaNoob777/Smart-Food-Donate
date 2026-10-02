@@ -8,11 +8,53 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>FoodShare — Share Food, Share Hope</title>
   <meta name="description" content="FoodShare connects food donors with NGOs and volunteers. C backend · stack, queue, priority queue, linked list, BST and graph." />
+  <style>
+    html, body { margin: 0; min-height: 100%; background: #f4ede2; }
+    #boot {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", sans-serif;
+      color: #3d3831;
+    }
+    #boot .card {
+      background: #fcf8f1;
+      border-radius: 2rem;
+      padding: 2.5rem 3rem;
+      text-align: center;
+      box-shadow: 14px 14px 30px rgba(75, 62, 44, 0.15), -9px -9px 22px rgba(255, 255, 255, 0.9);
+    }
+    #boot img { border-radius: 1rem; }
+    #boot h1 { font-size: 1.25rem; margin: 0.75rem 0 0.25rem; }
+    #boot p { font-size: 0.85rem; color: #7e7566; margin: 0; }
+    #boot .dot { display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 999px; background: #e9a23b; margin-right: 0.4rem; animation: bootpulse 1s ease-in-out infinite; }
+    @keyframes bootpulse { 0%, 100% { opacity: 0.35; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1.15); } }
+  </style>
 </head>
 
 
 <body>
-  <div id="root"></div>
+  <div id="root">
+    <!-- Shown until React mounts; replaced automatically on first render. -->
+    <div id="boot">
+      <div class="card">
+        <img src="/logo.svg" width="56" height="56" alt="FoodShare" />
+        <h1>FoodShare</h1>
+        <p id="boot-sub"><span class="dot"></span>Loading the clay…</p>
+      </div>
+    </div>
+  </div>
+  <noscript>
+    <p style="text-align:center;font-family:system-ui">FoodShare needs JavaScript enabled.</p>
+  </noscript>
+  <script>
+    // If any module fails before React mounts, say so instead of staying blank.
+    window.addEventListener("error", function (e) {
+      var el = document.getElementById("boot-sub");
+      if (el) el.textContent = "Failed to start: " + (e.message || "module error") + " — see the browser console.";
+    });
+  </script>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 

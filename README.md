@@ -9,6 +9,62 @@ structure does real work**.
 
 ---
 
+## Quick start (download → VS Code → run)
+
+### 1. Download the project
+Use the **Download / Export** button on your Freebuff project to get the `.zip`,
+then unzip it anywhere.
+
+### 2. Prerequisites
+| Tool | Needed for | Check |
+| --- | --- | --- |
+| [Bun](https://bun.sh) (or Node 20+) | web app | `bun --version` |
+| gcc + make | C backend & tests | `gcc --version` |
+| VS Code | editor | — |
+
+### 3. Open & install
+```bash
+cd foodshare-project
+code .                    # open in VS Code
+bun install               # JS dependencies
+```
+VS Code extensions worth installing: **Tailwind CSS IntelliSense**, **ESLint**,
+**Prettier**, **Convex**.
+
+### 4. Environment (`.env`)
+The app needs your Convex deployment URL. Copy the value from Freebuff's
+**Keys / API keys** tab (or from `.env.local` if it came with your download)
+into a `.env` file at the project root:
+
+```
+VITE_CONVEX_URL=https://your-deployment.convex.cloud
+```
+
+> No `.env`? Create one. The app shows a clear configuration screen instead of a
+> blank page if this is missing.
+
+### 5. Run — three terminals
+```bash
+# Terminal A — Convex backend (watch mode)
+bun convex dev
+
+# Terminal B — web app → http://localhost:5173
+bun run dev
+
+# Terminal C — the C backend → http://localhost:8080
+make api
+```
+The same steps exist as make targets: `make setup`, `make check`,
+`make convex`, `make web`, `make api`, `make test`.
+
+### 6. Verify
+- `/` → landing page · `/ds` → **C Engine Lab** (works fully offline — pure WASM)
+- `make test` → `ALL TESTS PASSED (385 checks across 6 data structures)`
+- `curl localhost:8080/api/donations` → priority-queue ordered JSON
+- `bunx convex dev --once && bunx tsc -b --noEmit` → clean
+
+---
+
 ## Data structures → product features
 
 | Structure | Role in the product | Example operation |
@@ -29,6 +85,7 @@ structure does real work**.
 | `wasm_api.c` | Flat integer ABI + operation trace log for the browser build |
 | `tests.c` | Native test suite — **385 checks across 6 structures** |
 | `Makefile` | `make` · `make test` · `make run` |
+| `build-wasm.sh` | Rebuild `public/ds.wasm` with wasi-sdk/clang |
 
 ```bash
 cd c-backend
@@ -45,7 +102,6 @@ Endpoints: `/api/health`, `/api/donations`, `/api/requests`,
 `/api/route`, `/api/graph/bfs`, `/api/graph/dfs`.
 
 ### The same C runs in the browser
-
 `public/ds.wasm` is the **same `ds.c`** compiled with clang to WebAssembly
 (rebuild with `./c-backend/build-wasm.sh <wasi-sdk-dir>`):
 
@@ -54,9 +110,8 @@ Endpoints: `/api/health`, `/api/donations`, `/api/requests`,
 - **Browse** (`/browse`) orders the live board through the C min-heap and
   resolves id searches with the C binary search tree.
 
-The hosted preview stores records with Convex (the platform's managed backend)
-using the same function contracts as the C API — `c-backend/README.md` has the
-full endpoint table.
+Records and auth live in Convex (the platform's managed backend) using the same
+function contracts as the C API — `c-backend/README.md` has the endpoint table.
 
 ## Web app routes
 
@@ -81,11 +136,13 @@ full endpoint table.
 - Requests are validated and enqueued **FIFO**; ids are checked for uniqueness
   by inserting into a **BST** before allocation.
 
-## Getting started
+## Troubleshooting
 
-```bash
-bun install
-bun convex dev --once     # codegen + push Convex functions
-bun tsc -b --noEmit       # typecheck
-bun run dev               # web app
-```
+| Symptom | Fix |
+| --- | --- |
+| "FoodShare needs its backend URL" | Set `VITE_CONVEX_URL` in `.env` (Keys / API keys tab) |
+| Blank page in dev | Check the browser console; `bunx convex dev --once && bunx tsc -b --noEmit` |
+| "Did you forget to run convex dev?" | Start Terminal A: `bun convex dev` |
+| Convex auth / login prompt | `bunx convex login`, then re-run `bun convex dev` |
+| Edited `c-backend/ds.c` but UI unchanged | Rebuild: `./c-backend/build-wasm.sh <wasi-sdk-dir>` |
+| Port 5173/8080 busy | Stop the other process or change the port in `vite.config.ts` |

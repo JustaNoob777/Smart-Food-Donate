@@ -86,7 +86,38 @@ class RootErrorBoundary extends React.Component<
   }
 }
 
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
+/** Build the Convex client defensively: a missing or invalid VITE_CONVEX_URL used
+ *  to throw at module scope and leave the preview a blank white page. Now it
+ *  renders a clear configuration notice instead. */
+let convex: ConvexReactClient | null = null;
+let convexError: string | null = null;
+try {
+  const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
+  if (!convexUrl) {
+    convexError =
+      "VITE_CONVEX_URL is not set. Add it in the Keys / API keys tab (or .env.local when running locally).";
+  } else {
+    convex = new ConvexReactClient(convexUrl);
+  }
+} catch (err) {
+  convexError = err instanceof Error ? err.message : String(err);
+}
+
+function ConfigNotice() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background p-6">
+      <div className="w-full max-w-lg rounded-[2rem] border border-border bg-card p-8 text-center shadow-md">
+        <img src="/logo.svg" alt="FoodShare" width={56} height={56} className="mx-auto rounded-xl" />
+        <p className="mt-4 text-lg font-semibold">FoodShare needs its backend URL</p>
+        <p className="mt-2 text-sm break-words text-muted-foreground">{convexError}</p>
+        <p className="mt-4 text-xs text-muted-foreground">
+          The C Engine Lab at <a className="font-medium underline" href="/ds">/ds</a> runs
+          without it (pure WebAssembly).
+        </p>
+      </div>
+    </div>
+  );
+}
 
 
 
@@ -114,7 +145,11 @@ function RouteSyncer() {
 }
 
 
-createRoot(document.getElementById("root")!).render(
+const rootEl = document.getElementById("root")!;
+if (!convex) {
+  createRoot(rootEl).render(<ConfigNotice />);
+} else {
+  createRoot(rootEl).render(
   <StrictMode>
     <RootErrorBoundary>
       <ToolbarErrorBoundary>
@@ -180,4 +215,6 @@ createRoot(document.getElementById("root")!).render(
       </ConvexAuthProvider>
     </RootErrorBoundary>
   </StrictMode>,
-);
+  );
+}
+
