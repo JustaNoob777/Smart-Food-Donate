@@ -13,7 +13,7 @@
  *   POST /api/requests           new request -> enqueue + mark CLAIMED
  *   POST /api/requests/claim     collect the OLDEST request (dequeue)
  *   GET  /api/history            recent actions from the STACK (newest first)
- *   GET  /api/bst                BST size / height / inorder traversal
+ *   GET  /api/bst                BST size / height / inorder traversal / tree
  *   GET  /api/bst/search?id=N    BST search with reported depth
  *   GET  /api/route              delivery route via LINKED LIST traversal
  *   GET  /api/graph/bfs?from=0   distribution network BFS
@@ -208,17 +208,21 @@ static void rebuild_network(void) {
   }
   for (i = 0; i < donation_count; i++) {
     const char *label = donations[i].donor_name[0] ? donations[i].donor_name : donations[i].location;
+    char node_label[64];
     char key[48];
     snprintf(key, sizeof(key), "donor:%s", donations[i].donor_id);
-    int node = network_node(key, label);
+    snprintf(node_label, sizeof(node_label), "Donor: %.55s", label);
+    int node = network_node(key, node_label);
     donation_network_node[i] = node;
     if (node >= 0) (void)graph_add_edge(&network, 0, node);
   }
   for (i = 0; i < request_count; i++) {
     int di = requests[i].donation_id - DONATION_ID_BASE;
+    char node_label[64];
     char key[48];
     snprintf(key, sizeof(key), "ngo:%s", requests[i].ngo_ref);
-    int node = network_node(key, requests[i].ngo_name);
+    snprintf(node_label, sizeof(node_label), "NGO: %.58s", requests[i].ngo_name);
+    int node = network_node(key, node_label);
     if (node >= 0 && di >= 0 && di < donation_count && donation_network_node[di] >= 0)
       (void)graph_add_edge(&network, donation_network_node[di], node);
   }
@@ -767,7 +771,37 @@ static void ep_history(int fd) {
   send_json(fd, 200, "OK", body);
 }
 
-/* GET /api/bst — size, height and ascending traversal */
+static int append_bst_json(char *body, size_t capacity, int *position, int index) {
+  int written;
+  const BstNode *node;
+
+  if (index < 0) {
+    written = snprintf(body + *position, capacity - (size_t)*position, "null");
+    if (written < 0 || (size_t)written >= capacity - (size_t)*position) return -1;
+    *position += written;
+    return 0;
+  }
+  if (index >= BST_POOL_CAP || !donation_index.used[index]) return -1;
+
+  node = &donation_index.pool[index];
+  written = snprintf(body + *position, capacity - (size_t)*position,
+                     "{\"id\":%d,\"left\":", node->key);
+  if (written < 0 || (size_t)written >= capacity - (size_t)*position) return -1;
+  *position += written;
+  if (append_bst_json(body, capacity, position, node->left) != 0) return -1;
+
+  written = snprintf(body + *position, capacity - (size_t)*position, ",\"right\":");
+  if (written < 0 || (size_t)written >= capacity - (size_t)*position) return -1;
+  *position += written;
+  if (append_bst_json(body, capacity, position, node->right) != 0) return -1;
+
+  written = snprintf(body + *position, capacity - (size_t)*position, "}");
+  if (written < 0 || (size_t)written >= capacity - (size_t)*position) return -1;
+  *position += written;
+  return 0;
+}
+
+/* GET /api/bst — size, height, ascending traversal, and actual tree links */
 static void ep_bst(int fd) {
   static char body[RESP_BUF];
   int keys[BST_POOL_CAP];
@@ -775,12 +809,17 @@ static void ep_bst(int fd) {
   int pos = 0;
   int i;
   pos += snprintf(body + pos, sizeof(body) - (size_t)pos,
-                  "{\"size\":%d,\"height\":%d,\"inorder\":[", bst_size(&donation_index),
-                  bst_height(&donation_index));
+                  "{\"size\":%d,\"height\":%d,\"inorder\":[",
+                  bst_size(&donation_index), bst_height(&donation_index));
   for (i = 0; i < n; i++) {
     pos += snprintf(body + pos, sizeof(body) - (size_t)pos, "%s%d", i ? "," : "", keys[i]);
   }
-  snprintf(body + pos, sizeof(body) - (size_t)pos, "]}");
+  pos += snprintf(body + pos, sizeof(body) - (size_t)pos, "],\"root\":");
+  if (append_bst_json(body, sizeof(body), &pos, donation_index.root) != 0) {
+    sendf(fd, 500, "Internal Server Error", "{\"error\":\"could not serialize donation BST\"}");
+    return;
+  }
+  snprintf(body + pos, sizeof(body) - (size_t)pos, "}");
   send_json(fd, 200, "OK", body);
 }
 

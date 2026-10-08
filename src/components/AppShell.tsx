@@ -33,7 +33,8 @@ export const NAV_LINKS = [
   { to: "/donate", label: "Donate" },
   { to: "/browse", label: "Request" },
   { to: "/track", label: "Track" },
-  { to: "/ds", label: "DS Lab" },
+  { to: "/ds", label: "Operations" },
+  { to: "/c-demo", label: "C API" },
   { to: "/about", label: "About" },
 ] as const;
 
@@ -216,6 +217,11 @@ export function AppFooter() {
                 </Link>
               </li>
               <li>
+                <Link className="hover:text-foreground" to="/ds?tab=deque">
+                  Deque · dispatch
+                </Link>
+              </li>
+              <li>
                 <Link className="hover:text-foreground" to="/ds?tab=bst">
                   BST · id lookup
                 </Link>
@@ -232,7 +238,12 @@ export function AppFooter() {
               </li>
               <li>
                 <Link className="hover:text-foreground" to="/ds">
-                  C engine lab
+                  FoodShare operations
+                </Link>
+              </li>
+              <li>
+                <Link className="hover:text-foreground" to="/c-demo">
+                  C backend status
                 </Link>
               </li>
               <li>
@@ -245,10 +256,9 @@ export function AppFooter() {
         </div>
         <div className="mt-8 flex flex-col gap-2 border-t border-border/70 pt-5 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>
-            Backend in C (stack · queue · priority queue · linked list · BST ·
-            graph)
+            Backend in C (stack · queue · deque · priority queue · linked list · AVL tree · graph)
           </span>
-          <span>React UI · native C backend · Claymorphism</span>
+          <span>React interface · native C API · local demo</span>
         </div>
       </div>
     </footer>
@@ -276,7 +286,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 FoodShare
               </span>
               <span className="block text-[10px] font-semibold text-muted-foreground">
-                Share Food · Share Hope
+                C Data Structures · FoodShare
               </span>
             </span>
           </Link>

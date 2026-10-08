@@ -31,13 +31,13 @@ export default function PublicHeader() {
             to="/ds"
             className="rounded-full px-4 py-2 text-sm font-semibold text-muted-foreground transition-all hover:bg-secondary/70 hover:text-foreground"
           >
-            DS Lab
+            Operations
           </Link>
           <Link
             to="/c-demo"
             className="rounded-full px-4 py-2 text-sm font-semibold text-muted-foreground transition-all hover:bg-secondary/70 hover:text-foreground"
           >
-            C Backend
+            C API status
           </Link>
           <Link
             to="/about"
@@ -49,16 +49,16 @@ export default function PublicHeader() {
 
         <div className="ml-auto flex items-center gap-2 md:ml-0">
           <button
-            className="clay-btn-ghost hidden px-4 py-2 text-sm font-bold sm:block"
+            className="clay-btn-ghost px-3 py-2 text-sm font-bold sm:px-4"
             onClick={() => navigate(isAuthenticated ? "/dashboard" : "/auth?returnTo=/dashboard")}
           >
-            {isAuthenticated ? "Dashboard" : "Sign in"}
+            {isAuthenticated ? "Home" : "Sign in"}
           </button>
           <button
             className="clay-btn px-4 py-2 text-sm font-bold"
-            onClick={() => navigate("/auth?returnTo=/dashboard?role=donor")}
+            onClick={() => navigate(isAuthenticated ? "/donate" : "/auth?returnTo=/donate")}
           >
-            Get started
+            {isAuthenticated ? "Donate" : "Get started"}
           </button>
         </div>
       </nav>
