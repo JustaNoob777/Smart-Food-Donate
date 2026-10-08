@@ -254,14 +254,14 @@ export default function CDemo() {
   const [requestedQuantity, setRequestedQuantity] = useState("1");
   const [searchId, setSearchId] = useState("");
   const [searchResult, setSearchResult] = useState<{ found: boolean; depth: number } | null>(null);
-  const [graphMode, setGraphMode] = useState<"bfs" | "dfs">("bfs");
-  const [graphOrder, setGraphOrder] = useState<number[]>([]);
+  const [graphTraversals, setGraphTraversals] = useState<{ bfs: number[]; dfs: number[] } | null>(null);
   const [graphStart, setGraphStart] = useState("0");
+  const [selectedDispatch, setSelectedDispatch] = useState("");
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [nextHealth, donations, requests, dispatch, history, bst, route, graph] = await Promise.all([
+      const [nextHealth, donations, requests, dispatch, history, bst, route, graph, graphDfs] = await Promise.all([
         getJson<Health>("/api/health"),
         getJson<Donation[]>("/api/donations"),
         getJson<RequestRow[]>("/api/requests"),
@@ -270,9 +270,11 @@ export default function CDemo() {
         getJson<BstState>("/api/bst"),
         getJson<RouteStep[]>("/api/route"),
         getJson<Graph>("/api/graph/bfs?from=0"),
+        getJson<Graph>("/api/graph/dfs?from=0"),
       ]);
       setHealth(nextHealth);
       setSnapshot({ donations, requests, dispatch, history, bst, route, graph });
+      setGraphTraversals((current) => current ?? { bfs: graph.order, dfs: graphDfs.order });
       setSelectedDonation((current) => donations.some((item) => String(item.id) === current && item.status === "AVAILABLE")
         ? current
         : String(donations.find((item) => item.status === "AVAILABLE")?.id ?? ""));
@@ -302,6 +304,7 @@ export default function CDemo() {
     try {
       const payload = await postJson<unknown>(path, body);
       setError("");
+      setGraphTraversals(null);
       toast.success("Updated by the C backend.");
       await refresh();
       window.dispatchEvent(new Event("foodshare:data-changed"));
@@ -382,6 +385,7 @@ export default function CDemo() {
 
       if (addedDonations > 0 || addedRequests > 0 || createdRoute) {
         setError("");
+        setGraphTraversals(null);
         toast.success(`Loaded complete sample data: ${addedDonations} donations, ${addedRequests} pickup requests${createdRoute ? ", and a delivery route" : ""}.`);
         window.dispatchEvent(new Event("foodshare:data-changed"));
       } else {
@@ -448,17 +452,19 @@ export default function CDemo() {
       .finally(() => setBusy(false));
   };
 
-  const traverseGraph = (mode: "bfs" | "dfs") => {
+  const traverseGraph = () => {
     const start = Number(graphStart);
     if (!snapshot || !Number.isInteger(start) || start < 0 || start >= snapshot.graph.names.length) return;
     setBusy(true);
-    void getJson<Graph>(`/api/graph/${mode}?from=${start}`)
-      .then((result) => {
-        setGraphMode(mode);
-        setGraphOrder(result.order);
+    void Promise.all([
+      getJson<Graph>(`/api/graph/bfs?from=${start}`),
+      getJson<Graph>(`/api/graph/dfs?from=${start}`),
+    ])
+      .then(([bfs, dfs]) => {
+        setGraphTraversals({ bfs: bfs.order, dfs: dfs.order });
         setError("");
       })
-      .catch((failure: unknown) => setError(failure instanceof Error ? failure.message : "Graph traversal failed."))
+      .catch((failure: unknown) => setError(failure instanceof Error ? failure.message : "Could not compare graph traversals."))
       .finally(() => setBusy(false));
   };
 
@@ -473,8 +479,8 @@ export default function CDemo() {
   const canRequest = currentRole === "ngo" || currentRole === "admin";
   const canAdmin = currentRole === "admin";
   const graphNames = snapshot?.graph.names ?? [];
-  const shownGraphOrder = graphOrder.length ? graphOrder : snapshot?.graph.order ?? [];
-  const shownGraphMode = graphOrder.length ? graphMode : snapshot?.graph.mode ?? graphMode;
+  const shownGraphTraversals = graphTraversals ?? { bfs: snapshot?.graph.order ?? [], dfs: [] };
+  const dispatchSelection = snapshot?.dispatch.find((item) => String(item.id) === selectedDispatch) ?? snapshot?.dispatch[0];
 
   return (
     <AppShell>
@@ -585,28 +591,43 @@ export default function CDemo() {
 
           <StructureCard title="Deque · dispatch" note="Double-ended queue · urgent end at FRONT, routine end at BACK">
             {snapshot?.dispatch.length ? (
-              <div className="overflow-x-auto pb-2">
-                <div className="flex w-max items-center gap-2">
-                  <span className="text-[10px] font-extrabold text-[#9b641a]">FRONT</span>
+              <>
+                <div className="space-y-1.5">
                   {snapshot.dispatch.map((item, index) => {
                     const request = requestById.get(item.id);
                     return (
-                      <div key={item.id} className="clay-inset w-36 rounded-xl p-2 text-center">
-                        <p className="text-xs font-bold">#{item.id} · {request?.donationTitle ?? `Food #${item.donation_id}`}</p>
-                        <p className="mt-1 text-[10px] text-muted-foreground">{item.status}</p>
-                        {canAdmin && item.status === "PENDING" && (
-                          <div className="mt-2 flex justify-center gap-1">
-                            <Button size="sm" variant="outline" disabled={busy || index === 0} onClick={() => void send("/api/dispatch/reorder", { request_id: item.id, position: "front", account_type: "admin" })}>To front</Button>
-                            <Button size="sm" variant="outline" disabled={busy || index === snapshot.dispatch.length - 1} onClick={() => void send("/api/dispatch/reorder", { request_id: item.id, position: "back", account_type: "admin" })}>To back</Button>
-                            {index === 0 && <Button size="sm" disabled={busy} onClick={() => void send("/api/requests/approve", { ref: item.id, account_type: "admin" })}>Approve</Button>}
-                          </div>
-                        )}
+                      <div key={item.id} className="clay-inset flex min-w-0 items-center gap-3 rounded-xl px-3 py-2">
+                        <span className={`w-12 shrink-0 text-[9px] font-extrabold uppercase ${index === 0 || index === snapshot.dispatch.length - 1 ? "text-[#9b641a]" : "text-muted-foreground"}`}>
+                          {index === 0 ? "FRONT" : index === snapshot.dispatch.length - 1 ? "BACK" : `#${index + 1}`}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-xs font-bold">Request #{item.id} · {request?.donationTitle ?? `Food #${item.donation_id}`}</span>
+                        <span className="shrink-0 text-[10px] text-muted-foreground">{item.status}</span>
                       </div>
                     );
                   })}
-                  <span className="text-[10px] font-extrabold text-muted-foreground">BACK</span>
                 </div>
-              </div>
+                {canAdmin && (
+                  <div className="mt-3 grid gap-2 border-t border-border pt-3">
+                    <label className="text-xs font-bold" htmlFor="dispatch-select">Choose a pending request to move
+                      <select
+                        id="dispatch-select"
+                        className="clay-inset mt-1.5 h-10 w-full rounded-xl px-3 text-xs"
+                        value={dispatchSelection?.id ?? ""}
+                        onChange={(event) => setSelectedDispatch(event.target.value)}
+                      >
+                        {snapshot.dispatch.filter((item) => item.status === "PENDING").map((item, index) => (
+                          <option key={item.id} value={item.id}>#{item.id} · {requestById.get(item.id)?.donationTitle ?? `Food #${item.donation_id}`} · position {index + 1}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" disabled={busy || !dispatchSelection || dispatchSelection.status !== "PENDING" || snapshot.dispatch[0]?.id === dispatchSelection.id} onClick={() => dispatchSelection && void send("/api/dispatch/reorder", { request_id: dispatchSelection.id, position: "front", account_type: "admin" })}>Move to front</Button>
+                      <Button size="sm" variant="outline" disabled={busy || !dispatchSelection || dispatchSelection.status !== "PENDING" || snapshot.dispatch[snapshot.dispatch.length - 1]?.id === dispatchSelection.id} onClick={() => dispatchSelection && void send("/api/dispatch/reorder", { request_id: dispatchSelection.id, position: "back", account_type: "admin" })}>Move to back</Button>
+                      <Button size="sm" disabled={busy || !dispatchSelection || snapshot.dispatch[0]?.id !== dispatchSelection.id} onClick={() => dispatchSelection && void send("/api/requests/approve", { ref: dispatchSelection.id, account_type: "admin" })}>Approve front request</Button>
+                    </div>
+                  </div>
+                )}
+              </>
             ) : <p className="text-sm text-muted-foreground">Dispatch fills when there are pending pickup requests.</p>}
             {!canAdmin && <p className="mt-3 text-[10px] text-muted-foreground">Admin sign-in enables moving and approving the front item.</p>}
           </StructureCard>
@@ -674,10 +695,10 @@ export default function CDemo() {
             <p className="mt-3 text-[10px] text-muted-foreground">{health?.structures.linked_list ?? 0} route nodes</p>
           </StructureCard>
 
-          <StructureCard title="Graph · distribution network" note="Circles are C graph nodes; connecting lines are its actual edges.">
+          <StructureCard title="Graph · distribution network" note="Node IDs stay the same in both traversal orders, making BFS and DFS easy to compare.">
             {snapshot?.graph.names.length ? (
               <>
-                <GraphDiagram graph={snapshot.graph} visitOrder={shownGraphOrder} />
+                <GraphDiagram graph={snapshot.graph} visitOrder={[...shownGraphTraversals.bfs, ...shownGraphTraversals.dfs]} />
                 <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
                   <label className="text-xs font-bold" htmlFor="graph-start">Start traversal at
                     <select
@@ -689,22 +710,27 @@ export default function CDemo() {
                       {graphNames.map((name, index) => <option key={`${name}-${index}`} value={index}>{index} · {name}</option>)}
                     </select>
                   </label>
-                  <Button variant="outline" disabled={busy} onClick={() => traverseGraph("bfs")}>Run BFS</Button>
-                  <Button variant="outline" disabled={busy} onClick={() => traverseGraph("dfs")}>Run DFS</Button>
+                  <Button variant="outline" disabled={busy} onClick={traverseGraph}>Compare BFS + DFS</Button>
                 </div>
-                {shownGraphOrder.length > 0 && (
-                  <div className="mt-4 border-t border-border pt-3">
-                    <p className="mb-2 text-xs font-bold">{shownGraphMode.toUpperCase()} visit order</p>
-                    <ol className="flex flex-wrap gap-2">
-                      {shownGraphOrder.map((node, index) => (
-                        <li key={`${node}-${index}`} className="clay-inset rounded-lg px-2 py-1 text-[11px]">
-                          <span className="mr-1 font-extrabold text-[#9b641a]">{index + 1}.</span>
-                          {graphNames[node] ?? `Node ${node}`}
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
-                )}
+                <div className="mt-4 space-y-3 border-t border-border pt-3">
+                  {(["bfs", "dfs"] as const).map((mode) => (
+                    <div key={mode}>
+                      <p className="mb-1 text-xs font-extrabold">{mode.toUpperCase()} order</p>
+                      {shownGraphTraversals[mode].length ? (
+                        <ol className="flex flex-wrap items-center gap-1.5">
+                          {shownGraphTraversals[mode].map((node, index) => (
+                            <li key={`${mode}-${node}-${index}`} className="flex items-center gap-1.5">
+                              <span className="clay-inset rounded-lg px-2 py-1 text-[11px]">
+                                <strong className="text-[#9b641a]">Node {node}</strong> · {graphNames[node] ?? "Unknown"}
+                              </span>
+                              {index < shownGraphTraversals[mode].length - 1 && <ArrowRight className="size-3 text-muted-foreground" />}
+                            </li>
+                          ))}
+                        </ol>
+                      ) : <p className="text-xs text-muted-foreground">Select a start node and compare traversals.</p>}
+                    </div>
+                  ))}
+                </div>
               </>
             ) : <p className="text-sm text-muted-foreground">Create a donation to add the food hub and donor nodes.</p>}
             <p className="mt-3 flex items-center gap-1 text-[10px] text-muted-foreground"><ArrowDown className="size-3" /> {health?.structures.graph_nodes ?? 0} nodes in C graph</p>
