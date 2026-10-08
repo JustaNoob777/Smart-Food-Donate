@@ -20,8 +20,19 @@ verification or production authentication.
 ### Prerequisites
 | Tool | Needed for | Check |
 | --- | --- | --- |
-| Node.js 20+ with npm | web app | `node --version` |
+| Node.js 20.19+ or 22.12+ with npm | web app | `node --version` |
 | gcc + make | C backend & tests | `gcc --version` |
+
+On Windows, use Ubuntu in WSL2 for the C backend; it uses POSIX sockets and
+does not build as a native Windows program. Install Git, Node.js, npm, gcc, and
+make inside WSL, and keep the clone in your WSL home directory.
+
+### Clone
+
+```bash
+git clone https://github.com/JustaNoob777/Smart-Food-Donate.git
+cd Smart-Food-Donate
+```
 
 ### Install
 

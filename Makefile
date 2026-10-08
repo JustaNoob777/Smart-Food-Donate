@@ -5,7 +5,7 @@
 
 ## Install JS dependencies
 setup:
-	npm install
+	npm ci
 
 ## Typecheck the browser app
 check:
