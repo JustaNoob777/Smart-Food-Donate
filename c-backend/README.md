@@ -49,7 +49,7 @@ To use the browser screen with this native C server, open two terminals:
 make api
 
 # Terminal 2: browser screen
-bun run dev
+npm run dev
 ```
 
 Open `http://localhost:5173`. The existing UI pages talk directly to the native

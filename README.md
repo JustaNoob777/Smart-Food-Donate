@@ -20,13 +20,13 @@ verification or production authentication.
 ### Prerequisites
 | Tool | Needed for | Check |
 | --- | --- | --- |
-| [Bun](https://bun.sh) (or Node 20+) | web app | `bun --version` |
+| Node.js 20+ with npm | web app | `node --version` |
 | gcc + make | C backend & tests | `gcc --version` |
 
 ### Install
 
 ```bash
-bun install
+npm ci
 ```
 
 ### Run — two terminals
@@ -38,7 +38,7 @@ make api
 
 ```bash
 # Terminal 2 — browser interface
-bun run dev
+npm run dev
 ```
 
 Open `http://localhost:5173`. The C server starts with an empty board. Sign in

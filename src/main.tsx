@@ -1,9 +1,9 @@
 import { Toaster } from "@/components/ui/sonner";
 import CDemo from "./pages/CDemo";
 import { RequireAuth } from "@/components/RequireAuth";
-import React, { StrictMode, useEffect, lazy, Suspense } from "react";
+import React, { StrictMode, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router";
+import { BrowserRouter, Route, Routes } from "react-router";
 import "./index.css";
 
 // Lazy load route components for better code splitting
@@ -65,87 +65,62 @@ class RootErrorBoundary extends React.Component<
   }
 }
 
-function RouteSyncer() {
-  const location = useLocation();
-  useEffect(() => {
-    window.parent.postMessage(
-      { type: "iframe-route-change", path: location.pathname },
-      "*",
-    );
-  }, [location.pathname]);
-
-  useEffect(() => {
-    function handleMessage(event: MessageEvent) {
-      if (event.data?.type === "navigate") {
-        if (event.data.direction === "back") window.history.back();
-        if (event.data.direction === "forward") window.history.forward();
-      }
-    }
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, []);
-
-  return null;
-}
-
-
 const rootEl = document.getElementById("root")!;
 createRoot(rootEl).render(
   <StrictMode>
     <RootErrorBoundary>
       <BrowserRouter>
-        <RouteSyncer />
         <Suspense fallback={<RouteLoading />}>
           <Routes>
             <Route path="/c-demo" element={<CDemo />} />
-              <Route path="/" element={<Landing />} />
-              <Route
-                path="/auth"
-                element={<AuthPage redirectAfterAuth="/dashboard" />}
-              />
-              <Route
-                path="/dashboard"
-                element={
-                  <RequireAuth>
-                    <Dashboard />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/donate"
-                element={
-                  <RequireAuth>
-                    <Donate />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/browse"
-                element={
-                  <RequireAuth>
-                    <Browse />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/track"
-                element={
-                  <RequireAuth>
-                    <Track />
-                  </RequireAuth>
-                }
-              />
-              <Route
-                path="/profile"
-                element={
-                  <RequireAuth>
-                    <Profile />
-                  </RequireAuth>
-                }
-              />
-              <Route path="/about" element={<About />} />
-              <Route path="/ds" element={<DSLab />} />
-              <Route path="*" element={<NotFound />} />
+            <Route path="/" element={<Landing />} />
+            <Route
+              path="/auth"
+              element={<AuthPage redirectAfterAuth="/dashboard" />}
+            />
+            <Route
+              path="/dashboard"
+              element={
+                <RequireAuth>
+                  <Dashboard />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/donate"
+              element={
+                <RequireAuth>
+                  <Donate />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/browse"
+              element={
+                <RequireAuth>
+                  <Browse />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/track"
+              element={
+                <RequireAuth>
+                  <Track />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <RequireAuth>
+                  <Profile />
+                </RequireAuth>
+              }
+            />
+            <Route path="/about" element={<About />} />
+            <Route path="/ds" element={<DSLab />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
         <Toaster />
