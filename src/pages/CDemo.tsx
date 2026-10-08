@@ -20,6 +20,12 @@ import { Link } from "react-router";
 import { toast } from "sonner";
 
 const API = (import.meta.env.VITE_C_API_URL || "http://localhost:8080").replace(/\/+$/, "");
+const SAMPLE_DONATIONS = [
+  { title: "Breakfast packs", location: "Sunrise Hotel", quantity: 24, expires_in: 45, donor_id: "sample-sunrise-hotel", donor_name: "Sunrise Hotel" },
+  { title: "Fresh bakery bread", location: "Malabar Cafe", quantity: 18, expires_in: 120, donor_id: "sample-malabar-cafe", donor_name: "Malabar Cafe" },
+  { title: "Vegetable lunch meals", location: "Green Leaf Restaurant", quantity: 30, expires_in: 180, donor_id: "sample-green-leaf", donor_name: "Green Leaf Restaurant" },
+  { title: "Packed evening snacks", location: "Community Kitchen", quantity: 16, expires_in: 90, donor_id: "sample-community-kitchen", donor_name: "Community Kitchen" },
+] as const;
 
 type Health = {
   engine: string;
@@ -39,6 +45,7 @@ type Health = {
 type Donation = {
   id: number;
   title: string;
+  donorId?: string;
   quantity: number;
   location: string;
   expires_in_minutes: number;
@@ -79,6 +86,29 @@ type Snapshot = {
 
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(`${API}${path}`, { cache: "no-store" });
+  const text = await response.text();
+  let payload: unknown;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    throw new Error(`Invalid JSON from ${path}`);
+  }
+  if (!response.ok) {
+    const message = typeof payload === "object" && payload !== null && "error" in payload
+      ? String((payload as { error: unknown }).error)
+      : `C backend returned HTTP ${response.status}`;
+    throw new Error(message);
+  }
+  return payload as T;
+}
+
+async function postJson<T>(path: string, body: Record<string, string | number>): Promise<T> {
+  const response = await fetch(`${API}${path}`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
   const text = await response.text();
   let payload: unknown;
   try {
@@ -269,19 +299,7 @@ export default function CDemo() {
   const send = async (path: string, body: Record<string, string | number>) => {
     setBusy(true);
     try {
-      const response = await fetch(`${API}${path}`, {
-        method: "POST",
-        cache: "no-store",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const payload: unknown = await response.json();
-      if (!response.ok) {
-        const message = typeof payload === "object" && payload !== null && "error" in payload
-          ? String((payload as { error: unknown }).error)
-          : `C backend returned HTTP ${response.status}`;
-        throw new Error(message);
-      }
+      const payload = await postJson<unknown>(path, body);
       setError("");
       toast.success("Updated by the C backend.");
       await refresh();
@@ -293,6 +311,69 @@ export default function CDemo() {
       toast.error(message);
       return null;
     } finally {
+      setBusy(false);
+    }
+  };
+
+  const loadSampleData = async () => {
+    if (busy || !health) return;
+    setBusy(true);
+    let addedDonations = 0;
+    let addedRequests = 0;
+    try {
+      const existingDonations = await getJson<Donation[]>("/api/donations");
+      const donationIds = new Map<string, number>();
+
+      for (const sample of SAMPLE_DONATIONS) {
+        const existing = existingDonations.find((donation) => donation.donorId === sample.donor_id);
+        if (existing) {
+          donationIds.set(sample.donor_id, existing.id);
+          continue;
+        }
+        const created = await postJson<{ id: number }>("/api/donations", sample);
+        donationIds.set(sample.donor_id, created.id);
+        addedDonations++;
+      }
+
+      if (canRequest) {
+        const existingRequests = await getJson<RequestRow[]>("/api/requests");
+        const requestDonorIds = new Set(existingRequests.map((request) => request.donation_id));
+        for (const sample of SAMPLE_DONATIONS.slice(0, 2)) {
+          const donationId = donationIds.get(sample.donor_id);
+          if (!donationId || requestDonorIds.has(donationId)) continue;
+          await postJson("/api/requests", {
+            donation_id: donationId,
+            ngo_id: 1,
+            quantity: 5,
+            ngo_ref: "sample-ngo",
+            ngo_name: "Kozhikode Relief Centre",
+            account_type: currentRole ?? "guest",
+          });
+          addedRequests++;
+        }
+      }
+
+      if (addedDonations > 0 || addedRequests > 0) {
+        setError("");
+        toast.success(
+          canRequest
+            ? `Loaded ${addedDonations} sample donations and ${addedRequests} pickup requests.`
+            : `Loaded ${addedDonations} sample donations. Sign in as NGO or admin to add sample pickup requests.`,
+        );
+        window.dispatchEvent(new Event("foodshare:data-changed"));
+      } else {
+        toast.info("Sample data is already loaded.");
+      }
+    } catch (failure) {
+      const message = failure instanceof Error ? failure.message : "Could not load sample data.";
+      setError(message);
+      toast.error(
+        addedDonations || addedRequests
+          ? `Some sample data was added, but loading stopped: ${message}`
+          : message,
+      );
+    } finally {
+      if (addedDonations > 0 || addedRequests > 0) await refresh();
       setBusy(false);
     }
   };
@@ -400,6 +481,13 @@ export default function CDemo() {
         <div className="mt-6 grid gap-4 lg:grid-cols-2">
           <section className="clay rounded-3xl p-5">
             <h2 className="flex items-center gap-2 font-extrabold"><PackagePlus className="size-4" /> Add a food donation</h2>
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-card/70 p-3">
+              <p className="text-xs text-muted-foreground">Want to explore first? Load example hotels, cafes, food, and requests.</p>
+              <Button type="button" variant="outline" size="sm" disabled={busy || !health} onClick={() => void loadSampleData()}>
+                Load sample data
+              </Button>
+            </div>
+            <p className="mt-2 text-[10px] text-muted-foreground">Safe to click again: it skips sample records already loaded. All data resets when the C server stops.</p>
             <form onSubmit={addDonation} className="mt-3 grid gap-3 sm:grid-cols-2">
               <label className="text-xs font-bold sm:col-span-2">Food
                 <Input className="mt-1.5" required maxLength={63} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Vegetable meals" />
