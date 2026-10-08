@@ -34,6 +34,12 @@ export default function PublicHeader() {
             DS Lab
           </Link>
           <Link
+            to="/c-demo"
+            className="rounded-full px-4 py-2 text-sm font-semibold text-muted-foreground transition-all hover:bg-secondary/70 hover:text-foreground"
+          >
+            C Backend
+          </Link>
+          <Link
             to="/about"
             className="rounded-full px-4 py-2 text-sm font-semibold text-muted-foreground transition-all hover:bg-secondary/70 hover:text-foreground"
           >

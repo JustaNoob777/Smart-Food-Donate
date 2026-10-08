@@ -4,7 +4,7 @@
  * The C backend is the source of truth (it runs the HTTP API and the WASM
  * engine behind the DS Lab). These implementations keep the *semantics*
  * identical — same capacities, same return conventions, same operations — so
- * Convex functions can apply the same stack / queue / priority-queue /
+ * The C backend applies the same stack / queue / priority-queue /
  * linked-list / BST / graph logic server-side when it can't ship a .wasm file.
  */
 
@@ -284,6 +284,8 @@ export class BST {
   }
 
   private rootRef(): { node: BstNode | null } {
+    // The getter/setter proxy must retain the owning BST instance.
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     const self = this;
     return {
       get node() {

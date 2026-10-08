@@ -86,6 +86,7 @@ static void t_nl(void) {
 /* ------------------------------------------------------------------ */
 static Stack g_stack;
 static Queue g_queue;
+static Deque g_deque;
 static PriorityQueue g_pq;
 static LinkedList g_ll;
 static BST g_bst;
@@ -123,6 +124,7 @@ WASM_EXPORT("c_engine_name") int c_engine_name(void) {
 WASM_EXPORT("c_engine_reset") void c_engine_reset(void) {
   stack_init(&g_stack);
   queue_init(&g_queue);
+  deque_init(&g_deque);
   pq_init(&g_pq);
   ll_init(&g_ll);
   bst_init(&g_bst);
@@ -130,8 +132,41 @@ WASM_EXPORT("c_engine_reset") void c_engine_reset(void) {
   g_last_pq_id = -1;
   g_last_pq_prio = -1;
   trace_len = 0;
-  t_str("c_engine_reset(): stack, queue, priority queue, linked list, BST and graph cleared");
+  t_str("c_engine_reset(): stack, circular queue, deque, priority queue, linked list, BST and graph cleared");
   t_nl();
+}
+
+/* ------------------------------------------------------------------ */
+/* Deque — front/back dispatch lane                                    */
+/* ------------------------------------------------------------------ */
+WASM_EXPORT("c_deque_push_front") int c_deque_push_front(int v) {
+  int r = deque_push_front(&g_deque, v);
+  t_str("deque_push_front("); t_int(v); t_str(") -> ");
+  if (r == 0) { t_str("urgent lane, size="); t_int(deque_size(&g_deque)); }
+  else t_str("FULL");
+  t_nl(); return r;
+}
+WASM_EXPORT("c_deque_push_back") int c_deque_push_back(int v) {
+  int r = deque_push_back(&g_deque, v);
+  t_str("deque_push_back("); t_int(v); t_str(") -> ");
+  if (r == 0) { t_str("routine lane, size="); t_int(deque_size(&g_deque)); }
+  else t_str("FULL");
+  t_nl(); return r;
+}
+WASM_EXPORT("c_deque_pop_front") int c_deque_pop_front(void) {
+  int out = -1; int r = deque_pop_front(&g_deque, &out);
+  t_str("deque_pop_front() -> "); if (r == 0) t_int(out); else t_str("EMPTY");
+  t_nl(); return r == 0 ? out : -1;
+}
+WASM_EXPORT("c_deque_pop_back") int c_deque_pop_back(void) {
+  int out = -1; int r = deque_pop_back(&g_deque, &out);
+  t_str("deque_pop_back() -> "); if (r == 0) t_int(out); else t_str("EMPTY");
+  t_nl(); return r == 0 ? out : -1;
+}
+WASM_EXPORT("c_deque_size") int c_deque_size(void) { return deque_size(&g_deque); }
+WASM_EXPORT("c_deque_at") int c_deque_at(int i) { return deque_at(&g_deque, i); }
+WASM_EXPORT("c_deque_clear") void c_deque_clear(void) {
+  deque_init(&g_deque); t_str("deque_clear() -> size=0"); t_nl();
 }
 
 /* ------------------------------------------------------------------ */

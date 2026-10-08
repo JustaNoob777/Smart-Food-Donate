@@ -1,4 +1,4 @@
-import { api } from "@/convex/_generated/api";
+import { api } from "@/lib/api";
 import { AppShell } from "@/components/AppShell";
 import { ClayBadge, PageHeader } from "@/components/ui-clay";
 import { Button } from "@/components/ui/button";
@@ -20,17 +20,22 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
 import { useCEngine } from "@/hooks/use-c-engine";
-import { useEnsureSeed } from "@/hooks/use-seed";
 import { cn } from "@/lib/utils";
 import { expiryInfo, foodEmoji, statusClass } from "@/lib/format";
 import { minutesUntil } from "@/lib/ds";
 import { Clock, MapPin, Search, Sparkles, Timer, X } from "lucide-react";
-import { useMutation, useQuery } from "convex/react";
-import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery } from "@/lib/c-api";
+import { useMemo, useState } from "react";
 import { Link } from "react-router";
 import { toast } from "sonner";
 
-const FILTERS = ["All", "Cooked Food", "Fresh Produce", "Bakery", "Packaged"] as const;
+const FILTERS = [
+  "All",
+  "Cooked Food",
+  "Fresh Produce",
+  "Bakery",
+  "Packaged",
+] as const;
 
 type Donation = {
   ref: number;
@@ -45,15 +50,14 @@ type Donation = {
 };
 
 export default function Browse() {
-  useEnsureSeed();
   const donations = useQuery(api.donations.list);
   const { user } = useAuth();
+  const userLocation = user?.location;
   const { engine, status: engineStatus } = useCEngine();
   const createRequest = useMutation(api.requests.create);
 
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("All");
   const [query, setQuery] = useState("");
-  const [searchInfo, setSearchInfo] = useState<string | null>(null);
   const [selected, setSelected] = useState<Donation | null>(null);
   const [quantity, setQuantity] = useState("1");
   const [submitting, setSubmitting] = useState(false);
@@ -61,55 +65,79 @@ export default function Browse() {
   const all: Donation[] = useMemo(() => donations ?? [], [donations]);
 
   /* ---- Order the board through the C binary min-heap (fallback: server order) ---- */
-  const [heapOrder, setHeapOrder] = useState<number[] | null>(null);
-  useEffect(() => {
-    if (!engine || all.length === 0) return;
-    const order = engine.pqOrder(
+  const heapOrder = useMemo(() => {
+    if (!engine || all.length === 0) return null;
+    return engine.pqOrder(
       all.map((d) => ({ id: d.ref, priority: minutesUntil(d.expiresAt) })),
     );
-    setHeapOrder(order);
   }, [engine, all]);
 
   const ordered = useMemo(() => {
     if (!heapOrder) return all;
     const byRef = new Map(all.map((d) => [d.ref, d]));
-    return heapOrder.map((ref) => byRef.get(ref)).filter((d): d is Donation => !!d);
+    return heapOrder
+      .map((ref) => byRef.get(ref))
+      .filter((d): d is Donation => !!d);
   }, [all, heapOrder]);
+
+  /* Build a live C graph from the NGO's location to available pickup points. */
+  const networkRefs = useMemo(() => {
+    if (!engine || !ordered.length || !userLocation?.trim()) return [];
+    const candidates = ordered.slice(0, 15);
+    engine.graphReset(candidates.length + 1);
+    const origin = userLocation.trim().toLowerCase();
+    candidates.forEach((donation, index) => {
+      if (donation.location.trim().toLowerCase() === origin)
+        engine.graphAddEdge(0, index + 1);
+    });
+    return engine
+      .graphBfs(0)
+      .filter((node) => node > 0)
+      .map((node) => candidates[node - 1].ref);
+  }, [engine, ordered, userLocation]);
+
+  const networkOrdered = useMemo(() => {
+    if (!networkRefs.length) return ordered;
+    const connected = new Set(networkRefs);
+    return [...ordered].sort(
+      (a, b) => Number(connected.has(b.ref)) - Number(connected.has(a.ref)),
+    );
+  }, [ordered, networkRefs]);
 
   /* ---- Search: text filter + C BST id lookup ---- */
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return ordered;
+    if (!q) return networkOrdered;
     if (/^\d+$/.test(q)) {
       const ref = Number(q);
-      return ordered.filter((d) => d.ref === ref || String(d.ref).includes(q));
+      return networkOrdered.filter(
+        (d) => d.ref === ref || String(d.ref).includes(q),
+      );
     }
-    return ordered.filter(
+    return networkOrdered.filter(
       (d) =>
         d.title.toLowerCase().includes(q) ||
         d.location.toLowerCase().includes(q) ||
         d.donorName.toLowerCase().includes(q) ||
         d.foodType.toLowerCase().includes(q),
     );
-  }, [ordered, query]);
+  }, [networkOrdered, query]);
 
-  const grouped = filter === "All" ? visible : visible.filter((d) => d.foodType === filter);
+  const grouped =
+    filter === "All" ? visible : visible.filter((d) => d.foodType === filter);
 
   // BST lookup runs in C whenever the query looks like a donation id.
-  useEffect(() => {
-    if (!engine) return;
+  const searchInfo = useMemo(() => {
+    if (!engine) return null;
     const q = query.trim();
-    if (!/^\d+$/.test(q)) {
-      setSearchInfo(null);
-      return;
-    }
+    if (!/^\d+$/.test(q)) return null;
     engine.bstClear();
     for (const d of all) engine.bstInsert(d.ref);
     const ref = Number(q);
     const depth = engine.bstSearch(ref);
     const lines = engine.trace();
     const line = lines[lines.length - 1] ?? "bst_search()";
-    setSearchInfo(depth >= 0 ? line : `${line} · not in tree`);
+    return depth >= 0 ? line : `${line} · not in tree`;
   }, [query, engine, all]);
 
   const openRequest = (d: Donation) => {
@@ -125,12 +153,23 @@ export default function Browse() {
         donationRef: selected.ref,
         quantity: Number(quantity),
       });
-      toast.success(`Request #${res.ref} enqueued — FIFO position served oldest-first.`);
+      if (engine) {
+        engine.queueEnqueue(res.ref);
+        if (minutesUntil(selected.expiresAt) <= 120)
+          engine.dequePushFront(res.ref);
+        else engine.dequePushBack(res.ref);
+        engine.stackPush(res.ref);
+      }
+      toast.success(
+        `Request #${res.ref} enqueued — FIFO position served oldest-first.`,
+      );
       setSelected(null);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Could not send the request.";
+      const msg =
+        err instanceof Error ? err.message : "Could not send the request.";
       toast.error(msg);
-      if (msg.includes("NGO")) toast.info("Switch your profile to an NGO account first.");
+      if (msg.includes("NGO"))
+        toast.info("Sign in with the NGO account to request food.");
     } finally {
       setSubmitting(false);
     }
@@ -143,12 +182,26 @@ export default function Browse() {
           title="Available food donations"
           subtitle="Everything below is ordered by the C priority queue — soonest expiry first — and searchable by id through the C binary search tree."
           action={
-            <ClayBadge className={cn("px-3 py-1.5", engineStatus === "ready" ? "bg-[#fdecc8] text-[#7a5410]" : "bg-muted text-muted-foreground")}>
+            <ClayBadge
+              className={cn(
+                "px-3 py-1.5",
+                engineStatus === "ready"
+                  ? "bg-[#fdecc8] text-[#7a5410]"
+                  : "bg-muted text-muted-foreground",
+              )}
+            >
               <Sparkles className="size-3" />
               {engineStatus === "ready" ? "C heap active" : "loading C engine…"}
             </ClayBadge>
           }
         />
+
+        {user?.location && (
+          <p className="mt-3 text-xs font-semibold text-muted-foreground">
+            C graph BFS checks pickup points connected to your location (
+            {user.location}); reachable donations appear first.
+          </p>
+        )}
 
         {/* ---------------------------- search bar ---------------------------- */}
         <div className="clay mt-6 flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
@@ -198,12 +251,20 @@ export default function Browse() {
             <div className="mx-auto grid size-16 place-items-center rounded-3xl bg-card text-3xl shadow-md">
               🍽️
             </div>
-            <p className="mt-4 text-lg font-extrabold">Nothing matches that search</p>
-            <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-              Try a different filter, or check back soon — donors post fresh surplus
-              throughout the day.
+            <p className="mt-4 text-lg font-extrabold">
+              Nothing matches that search
             </p>
-            <button className="clay-btn mt-5 px-5 py-2.5 text-sm font-extrabold" onClick={() => { setQuery(""); setFilter("All"); }}>
+            <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+              Try a different filter, or check back soon — donors post fresh
+              surplus throughout the day.
+            </p>
+            <button
+              className="clay-btn mt-5 px-5 py-2.5 text-sm font-extrabold"
+              onClick={() => {
+                setQuery("");
+                setFilter("All");
+              }}
+            >
               Reset the board
             </button>
           </div>
@@ -213,21 +274,33 @@ export default function Browse() {
               const info = expiryInfo(d.expiresAt);
               const claimable = d.status === "AVAILABLE" && !info.expired;
               return (
-                <article key={d.ref} className="clay flex flex-col p-5 transition-transform duration-200 hover:-translate-y-1.5">
+                <article
+                  key={d.ref}
+                  className="clay flex flex-col p-5 transition-transform duration-200 hover:-translate-y-1.5"
+                >
                   <div className="flex items-start justify-between gap-3">
                     <span className="grid size-14 place-items-center rounded-2xl bg-[#f4ede2] text-2xl shadow-inner">
                       {foodEmoji(d.foodType)}
                     </span>
-                    <ClayBadge className={statusClass(d.status)}>{d.status}</ClayBadge>
+                    <ClayBadge className={statusClass(d.status)}>
+                      {d.status}
+                    </ClayBadge>
                   </div>
 
-                  <h3 className="mt-4 text-lg leading-tight font-extrabold">{d.title}</h3>
+                  <h3 className="mt-4 text-lg leading-tight font-extrabold">
+                    {d.title}
+                  </h3>
                   <p className="mt-1 text-sm font-semibold text-muted-foreground">
                     {d.quantity} servings · {d.foodType}
                   </p>
 
                   <div className="mt-3 space-y-1.5 text-xs font-semibold text-muted-foreground">
-                    <p className={cn("flex items-center gap-1.5", info.urgent && "text-[#b4553f]")}>
+                    <p
+                      className={cn(
+                        "flex items-center gap-1.5",
+                        info.urgent && "text-[#b4553f]",
+                      )}
+                    >
                       <Timer className="size-3.5" /> {info.label}
                     </p>
                     <p className="flex items-center gap-1.5">
@@ -239,7 +312,9 @@ export default function Browse() {
                   </div>
 
                   <div className="mt-4 flex items-center justify-between gap-2 border-t border-border/70 pt-4">
-                    <code className="text-[11px] font-bold text-muted-foreground">#{d.ref}</code>
+                    <code className="text-[11px] font-bold text-muted-foreground">
+                      #{d.ref}
+                    </code>
                     {claimable ? (
                       <Button size="sm" onClick={() => openRequest(d)}>
                         Request
@@ -262,14 +337,20 @@ export default function Browse() {
             {user?.organization || user?.name || "guest"}
           </span>{" "}
           · only NGO accounts can claim food ·{" "}
-          <Link to="/profile" className="font-bold underline underline-offset-4">
-            switch role
+          <Link
+            to="/profile"
+            className="font-bold underline underline-offset-4"
+          >
+            manage profile
           </Link>
         </p>
       </div>
 
       {/* ----------------------------- request dialog ---------------------------- */}
-      <Dialog open={!!selected} onOpenChange={(open) => !open && setSelected(null)}>
+      <Dialog
+        open={!!selected}
+        onOpenChange={(open) => !open && setSelected(null)}
+      >
         <DialogContent className="max-w-lg">
           {selected && (
             <>
@@ -279,9 +360,12 @@ export default function Browse() {
                     {foodEmoji(selected.foodType)}
                   </span>
                   <div>
-                    <DialogTitle className="text-xl font-extrabold">{selected.title}</DialogTitle>
+                    <DialogTitle className="text-xl font-extrabold">
+                      {selected.title}
+                    </DialogTitle>
                     <DialogDescription>
-                      {selected.quantity} servings · {selected.location} · from {selected.donorName}
+                      {selected.quantity} servings · {selected.location} · from{" "}
+                      {selected.donorName}
                     </DialogDescription>
                   </div>
                 </div>
@@ -289,23 +373,37 @@ export default function Browse() {
 
               <div className="clay-inset grid grid-cols-3 gap-3 p-4 text-center">
                 <div>
-                  <p className="text-lg font-extrabold tabular-nums">{selected.quantity}</p>
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase">servings</p>
+                  <p className="text-lg font-extrabold tabular-nums">
+                    {selected.quantity}
+                  </p>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase">
+                    servings
+                  </p>
                 </div>
                 <div>
                   <p className="text-lg font-extrabold tabular-nums">
-                    {Math.max(1, Math.round((selected.expiresAt - Date.now()) / 3600000))}h
+                    {Math.max(
+                      1,
+                      Math.round(minutesUntil(selected.expiresAt) / 60),
+                    )}
+                    h
                   </p>
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase">left</p>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase">
+                    left
+                  </p>
                 </div>
                 <div>
                   <p className="text-lg font-extrabold">#{selected.ref}</p>
-                  <p className="text-[10px] font-bold text-muted-foreground uppercase">bst id</p>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase">
+                    bst id
+                  </p>
                 </div>
               </div>
 
               {selected.notes && (
-                <p className="text-sm leading-6 text-muted-foreground">{selected.notes}</p>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  {selected.notes}
+                </p>
               )}
 
               <div className="space-y-2">
@@ -315,7 +413,10 @@ export default function Browse() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {Array.from({ length: Math.min(selected.quantity, 12) }, (_, i) => i + 1).map((n) => (
+                    {Array.from(
+                      { length: Math.min(selected.quantity, 12) },
+                      (_, i) => i + 1,
+                    ).map((n) => (
                       <SelectItem key={n} value={String(n)}>
                         {n} serving{n > 1 ? "s" : ""}
                       </SelectItem>
@@ -328,14 +429,17 @@ export default function Browse() {
                 <Button variant="outline" onClick={() => setSelected(null)}>
                   Cancel
                 </Button>
-                <Button onClick={() => void submitRequest()} disabled={submitting}>
+                <Button
+                  onClick={() => void submitRequest()}
+                  disabled={submitting}
+                >
                   {submitting ? "Enqueuing…" : "Submit request"}
                 </Button>
               </DialogFooter>
 
               <p className="text-[11px] font-semibold text-muted-foreground">
-                The request enters the FIFO queue; the donation flips to CLAIMED the moment
-                the backend accepts it.
+                The request enters the FIFO queue; the donation flips to CLAIMED
+                the moment the backend accepts it.
               </p>
             </>
           )}

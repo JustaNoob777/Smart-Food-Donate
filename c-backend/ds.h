@@ -60,6 +60,23 @@ int queue_size(const Queue *q);
 int queue_at(const Queue *q, int i);   /* 0 = front; -1 if OOB */
 
 /* ------------------------------------------------------------------ */
+/* Deque (double-ended queue) — dispatch lane                          */
+/* ------------------------------------------------------------------ */
+#define DEQUE_CAP 64
+typedef struct {
+  int items[DEQUE_CAP];
+  int head;
+  int count;
+} Deque;
+void deque_init(Deque *d);
+int deque_push_front(Deque *d, int v);
+int deque_push_back(Deque *d, int v);
+int deque_pop_front(Deque *d, int *out);
+int deque_pop_back(Deque *d, int *out);
+int deque_size(const Deque *d);
+int deque_at(const Deque *d, int i);
+
+/* ------------------------------------------------------------------ */
 /* Priority queue (binary min-heap) — lower priority = expires sooner  */
 /* ------------------------------------------------------------------ */
 #define PQ_CAP 64
@@ -95,6 +112,8 @@ typedef struct {
   LLNode pool[LL_POOL_CAP];
   char used[LL_POOL_CAP];
   int head;
+  int tail;
+  int free_head;
   int size;
 } LinkedList;
 
@@ -115,12 +134,14 @@ typedef struct {
   int key;
   int left;
   int right;
+  int height; /* AVL balance metadata; leaf height is 0 */
 } BstNode;
 
 typedef struct {
   BstNode pool[BST_POOL_CAP];
   char used[BST_POOL_CAP];
   int root;
+  int free_head;
   int size;
 } BST;
 
@@ -129,7 +150,7 @@ int bst_insert(BST *t, int key);        /* 0 ok, 1 duplicate, -1 full */
 int bst_contains(const BST *t, int key);
 int bst_delete(BST *t, int key);        /* 1 deleted, 0 not found */
 int bst_size(const BST *t);
-int bst_height(const BST *t);           /* single node = 0, empty = -1 */
+int bst_height(const BST *t);           /* balanced BST: single node = 0, empty = -1 */
 int bst_search_depth(const BST *t, int key); /* depth of hit (root=0), -1 miss */
 int bst_inorder(const BST *t, int *out, int cap); /* ascending; returns count */
 int bst_preorder(const BST *t, int *out, int cap);

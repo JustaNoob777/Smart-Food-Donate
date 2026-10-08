@@ -2,7 +2,6 @@
 .env.keys
 node_modules
 dist
-src/convex/_generated
 
 # C backend build artifacts
 c-backend/foodshare-server

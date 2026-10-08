@@ -1,9 +1,6 @@
-import '@vly-ai/integrations';
 import { Toaster } from "@/components/ui/sonner";
+import CDemo from "./pages/CDemo";
 import { RequireAuth } from "@/components/RequireAuth";
-import { VlyToolbar } from "../vly-toolbar-readonly.tsx";
-import { ConvexAuthProvider } from "@convex-dev/auth/react";
-import { ConvexReactClient } from "convex/react";
 import React, { StrictMode, useEffect, lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
@@ -28,24 +25,6 @@ function RouteLoading() {
       <div className="animate-pulse text-muted-foreground">Loading...</div>
     </div>
   );
-}
-
-/** Silent error boundary — if VlyToolbar crashes it renders nothing instead of
- *  crashing the whole app (e.g. hook errors in the browser runtime). */
-class ToolbarErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-  componentDidCatch(err: Error) {
-    console.warn("[VlyToolbar] Caught error, toolbar disabled:", err.message);
-  }
-  render() {
-    return this.state.hasError ? null : this.props.children;
-  }
 }
 
 /** Hard guard so runtime errors never leave the preview as a blank page. */
@@ -86,41 +65,6 @@ class RootErrorBoundary extends React.Component<
   }
 }
 
-/** Build the Convex client defensively: a missing or invalid VITE_CONVEX_URL used
- *  to throw at module scope and leave the preview a blank white page. Now it
- *  renders a clear configuration notice instead. */
-let convex: ConvexReactClient | null = null;
-let convexError: string | null = null;
-try {
-  const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
-  if (!convexUrl) {
-    convexError =
-      "VITE_CONVEX_URL is not set. Add it in the Keys / API keys tab (or .env.local when running locally).";
-  } else {
-    convex = new ConvexReactClient(convexUrl);
-  }
-} catch (err) {
-  convexError = err instanceof Error ? err.message : String(err);
-}
-
-function ConfigNotice() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-6">
-      <div className="w-full max-w-lg rounded-[2rem] border border-border bg-card p-8 text-center shadow-md">
-        <img src="/logo.svg" alt="FoodShare" width={56} height={56} className="mx-auto rounded-xl" />
-        <p className="mt-4 text-lg font-semibold">FoodShare needs its backend URL</p>
-        <p className="mt-2 text-sm break-words text-muted-foreground">{convexError}</p>
-        <p className="mt-4 text-xs text-muted-foreground">
-          The C Engine Lab at <a className="font-medium underline" href="/ds">/ds</a> runs
-          without it (pure WebAssembly).
-        </p>
-      </div>
-    </div>
-  );
-}
-
-
-
 function RouteSyncer() {
   const location = useLocation();
   useEffect(() => {
@@ -146,20 +90,14 @@ function RouteSyncer() {
 
 
 const rootEl = document.getElementById("root")!;
-if (!convex) {
-  createRoot(rootEl).render(<ConfigNotice />);
-} else {
-  createRoot(rootEl).render(
+createRoot(rootEl).render(
   <StrictMode>
     <RootErrorBoundary>
-      <ToolbarErrorBoundary>
-        <VlyToolbar />
-      </ToolbarErrorBoundary>
-      <ConvexAuthProvider client={convex}>
-        <BrowserRouter>
-          <RouteSyncer />
-          <Suspense fallback={<RouteLoading />}>
-            <Routes>
+      <BrowserRouter>
+        <RouteSyncer />
+        <Suspense fallback={<RouteLoading />}>
+          <Routes>
+            <Route path="/c-demo" element={<CDemo />} />
               <Route path="/" element={<Landing />} />
               <Route
                 path="/auth"
@@ -208,13 +146,10 @@ if (!convex) {
               <Route path="/about" element={<About />} />
               <Route path="/ds" element={<DSLab />} />
               <Route path="*" element={<NotFound />} />
-            </Routes>
-          </Suspense>
-        </BrowserRouter>
+          </Routes>
+        </Suspense>
         <Toaster />
-      </ConvexAuthProvider>
+      </BrowserRouter>
     </RootErrorBoundary>
   </StrictMode>,
-  );
-}
-
+);

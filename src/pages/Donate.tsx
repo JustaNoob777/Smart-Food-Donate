@@ -1,4 +1,4 @@
-import { api } from "@/convex/_generated/api";
+import { api } from "@/lib/api";
 import { AppShell } from "@/components/AppShell";
 import { PageHeader } from "@/components/ui-clay";
 import { Button } from "@/components/ui/button";
@@ -12,10 +12,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useEnsureSeed } from "@/hooks/use-seed";
+import { useCEngine } from "@/hooks/use-c-engine";
+import { minutesUntil } from "@/lib/ds";
 import { cn } from "@/lib/utils";
-import { Clock, Gift, HeartHandshake, MapPin, PackageCheck, Sprout, Timer } from "lucide-react";
-import { useMutation } from "convex/react";
+import {
+  Clock,
+  Gift,
+  HeartHandshake,
+  MapPin,
+  PackageCheck,
+  Sprout,
+  Timer,
+} from "lucide-react";
+import { useMutation } from "@/lib/c-api";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { toast } from "sonner";
@@ -36,9 +45,9 @@ function defaultExpiry() {
 }
 
 export default function Donate() {
-  useEnsureSeed();
   const navigate = useNavigate();
   const create = useMutation(api.donations.create);
+  const { engine } = useCEngine();
   const [foodType, setFoodType] = useState<string>("Cooked Food");
   const [busy, setBusy] = useState(false);
 
@@ -53,20 +62,37 @@ export default function Donate() {
     const expiresAt = expiry ? new Date(expiry).getTime() : Number.NaN;
 
     if (!title) return toast.error("Give the donation a name.");
-    if (!quantity || quantity <= 0) return toast.error("Quantity must be a positive number.");
+    if (!quantity || quantity <= 0)
+      return toast.error("Quantity must be a positive number.");
     if (!location) return toast.error("Add a pickup location.");
-    if (!expiresAt || Number.isNaN(expiresAt)) return toast.error("Pick an expiry date & time.");
-    if (expiresAt <= Date.now()) return toast.error("Expiry must be later than the current time.");
+    if (!expiresAt || Number.isNaN(expiresAt))
+      return toast.error("Pick an expiry date & time.");
+    if (expiresAt <= Date.now())
+      return toast.error("Expiry must be later than the current time.");
 
     setBusy(true);
     try {
-      const res = await create({ title, foodType, quantity, location, expiresAt, notes });
+      const res = await create({
+        title,
+        foodType,
+        quantity,
+        location,
+        expiresAt,
+        notes,
+      });
+      if (engine) {
+        engine.bstInsert(res.ref);
+        engine.pqInsert(res.ref, minutesUntil(expiresAt));
+        engine.stackPush(res.ref);
+      }
       toast.success(
         `Donation #${res.ref} created — bst_insert(${res.ref}) ok, pushed to the expiry heap.`,
       );
       navigate("/dashboard");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not create the donation.");
+      toast.error(
+        err instanceof Error ? err.message : "Could not create the donation.",
+      );
     } finally {
       setBusy(false);
     }
@@ -86,7 +112,12 @@ export default function Donate() {
             <div className="grid gap-5 sm:grid-cols-2">
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="title">Donation name</Label>
-                <Input id="title" name="title" placeholder="e.g. Cooked Rice + Curry" required />
+                <Input
+                  id="title"
+                  name="title"
+                  placeholder="e.g. Cooked Rice + Curry"
+                  required
+                />
               </div>
 
               <div className="space-y-2">
@@ -120,12 +151,23 @@ export default function Donate() {
 
               <div className="space-y-2">
                 <Label htmlFor="location">Pickup location</Label>
-                <Input id="location" name="location" placeholder="e.g. Kozhikode" required />
+                <Input
+                  id="location"
+                  name="location"
+                  placeholder="e.g. Kozhikode"
+                  required
+                />
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="expiry">Expiry date &amp; time</Label>
-                <Input id="expiry" name="expiry" type="datetime-local" defaultValue={defaultExpiry()} required />
+                <Input
+                  id="expiry"
+                  name="expiry"
+                  type="datetime-local"
+                  defaultValue={defaultExpiry()}
+                  required
+                />
               </div>
 
               <div className="space-y-2 sm:col-span-2">
@@ -144,7 +186,8 @@ export default function Donate() {
                 {busy ? "Submitting…" : "Submit donation"}
               </Button>
               <p className="text-xs font-semibold text-muted-foreground">
-                Rules enforced server-side: quantity &gt; 0 and expiry in the future.
+                Rules enforced server-side: quantity &gt; 0 and expiry in the
+                future.
               </p>
             </div>
           </form>
@@ -161,8 +204,8 @@ export default function Donate() {
                 Help reduce food waste and fight hunger in your community.
               </h3>
               <p className="mt-2 text-sm leading-6 font-semibold text-[#6b4d1d]">
-                Food that would have been thrown away becomes a meal for a family —
-                usually within hours.
+                Food that would have been thrown away becomes a meal for a
+                family — usually within hours.
               </p>
             </div>
 
@@ -170,29 +213,49 @@ export default function Donate() {
               <h3 className="font-extrabold">What happens next</h3>
               <ol className="mt-4 space-y-3.5">
                 {[
-                  { icon: PackageCheck, text: "Your donation is validated and indexed by id (BST)." },
-                  { icon: Timer, text: "Expiry time becomes its priority in the min-heap." },
-                  { icon: Clock, text: "NGOs see it at the top of the board if it's urgent." },
-                  { icon: HeartHandshake, text: "A request arrives through the FIFO queue." },
-                  { icon: MapPin, text: "A volunteer picks it up and the route advances." },
+                  {
+                    icon: PackageCheck,
+                    text: "Your donation is validated and indexed by id (BST).",
+                  },
+                  {
+                    icon: Timer,
+                    text: "Expiry time becomes its priority in the min-heap.",
+                  },
+                  {
+                    icon: Clock,
+                    text: "NGOs see it at the top of the board if it's urgent.",
+                  },
+                  {
+                    icon: HeartHandshake,
+                    text: "A request arrives through the FIFO queue.",
+                  },
+                  {
+                    icon: MapPin,
+                    text: "A volunteer picks it up and the route advances.",
+                  },
                 ].map((s, i) => (
                   <li key={i} className="flex items-start gap-3">
                     <span
                       className={cn(
                         "grid size-8 shrink-0 place-items-center rounded-xl",
-                        i % 2 === 0 ? "clay-tile-sage text-[#2f4a26]" : "clay-tile-sky text-[#274066]",
+                        i % 2 === 0
+                          ? "clay-tile-sage text-[#2f4a26]"
+                          : "clay-tile-sky text-[#274066]",
                       )}
                     >
                       <s.icon className="size-4" />
                     </span>
-                    <p className="pt-1 text-sm leading-5 text-muted-foreground">{s.text}</p>
+                    <p className="pt-1 text-sm leading-5 text-muted-foreground">
+                      {s.text}
+                    </p>
                   </li>
                 ))}
               </ol>
               <div className="clay-inset mt-5 flex items-center gap-3 px-4 py-3">
                 <Gift className="size-5 shrink-0 text-[#c07f1d]" />
                 <p className="text-xs font-semibold">
-                  Demo tip: short expiries jump straight to the front of the queue.
+                  Demo tip: short expiries jump straight to the front of the
+                  queue.
                 </p>
               </div>
             </div>

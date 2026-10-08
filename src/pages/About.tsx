@@ -97,7 +97,7 @@ export default function About() {
               {[
                 { icon: Server, k: "C backend", v: "ds.c + HTTP server, compiled twice (native + WASM)" },
                 { icon: ShieldCheck, k: "Role-checked", v: "Donor · NGO · Admin with server-side ownership rules" },
-                { icon: Database, k: "Live records", v: "Donations, requests, activity and counters via Convex" },
+                { icon: Database, k: "Live records", v: "Donations, requests, activity and counters via the C API" },
                 { icon: Cpu, k: "385 assertions", v: "Native test suite covering all six structures" },
               ].map((r) => (
                 <div key={r.k} className="clay-inset flex items-center gap-3 px-4 py-3.5">
@@ -210,7 +210,7 @@ $ curl localhost:8080/api/donations   # priority-queue order`}
               <h3 className="text-lg font-extrabold">The web frontend</h3>
             </div>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              React + Tailwind (claymorphism) with Convex for live records and auth.
+              React + Tailwind (claymorphism) with a native C HTTP server for live records.
               The Browse page orders listings through the compiled C heap, and the DS Lab
               drives the engine directly while printing its own trace log.
             </p>

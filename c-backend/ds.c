@@ -73,6 +73,51 @@ int queue_at(const Queue *q, int i) {
   return q->items[(q->head + i) % QUEUE_CAP];
 }
 
+/* =============================== Deque ============================ */
+
+void deque_init(Deque *d) { d->head = 0; d->count = 0; }
+
+int deque_push_front(Deque *d, int v) {
+  if (d->count >= DEQUE_CAP) return -1;
+  d->head = (d->head - 1 + DEQUE_CAP) % DEQUE_CAP;
+  d->items[d->head] = v;
+  d->count++;
+  return 0;
+}
+
+int deque_push_back(Deque *d, int v) {
+  int tail;
+  if (d->count >= DEQUE_CAP) return -1;
+  tail = (d->head + d->count) % DEQUE_CAP;
+  d->items[tail] = v;
+  d->count++;
+  return 0;
+}
+
+int deque_pop_front(Deque *d, int *out) {
+  if (d->count <= 0) return -1;
+  if (out) *out = d->items[d->head];
+  d->head = (d->head + 1) % DEQUE_CAP;
+  d->count--;
+  return 0;
+}
+
+int deque_pop_back(Deque *d, int *out) {
+  int tail;
+  if (d->count <= 0) return -1;
+  tail = (d->head + d->count - 1) % DEQUE_CAP;
+  if (out) *out = d->items[tail];
+  d->count--;
+  return 0;
+}
+
+int deque_size(const Deque *d) { return d->count; }
+
+int deque_at(const Deque *d, int i) {
+  if (i < 0 || i >= d->count) return -1;
+  return d->items[(d->head + i) % DEQUE_CAP];
+}
+
 /* ========================== Priority queue ======================== */
 
 static void pq_swap(PqItem *a, PqItem *b) {
@@ -139,23 +184,31 @@ const PqItem *pq_at(const PriorityQueue *pq, int i) {
 /* =========================== Linked list ========================== */
 
 static int ll_alloc(LinkedList *l) {
-  int i;
-  for (i = 0; i < LL_POOL_CAP; i++) {
-    if (!l->used[i]) {
-      l->used[i] = 1;
-      l->pool[i].value = 0;
-      l->pool[i].next = -1;
-      return i;
-    }
-  }
-  return -1;
+  int i = l->free_head;
+  if (i == -1) return -1;
+  l->free_head = l->pool[i].next;
+  l->used[i] = 1;
+  l->pool[i].value = 0;
+  l->pool[i].next = -1;
+  return i;
+}
+
+static void ll_release(LinkedList *l, int i) {
+  l->used[i] = 0;
+  l->pool[i].next = l->free_head;
+  l->free_head = i;
 }
 
 void ll_init(LinkedList *l) {
   int i;
   l->head = -1;
+  l->tail = -1;
+  l->free_head = 0;
   l->size = 0;
-  for (i = 0; i < LL_POOL_CAP; i++) l->used[i] = 0;
+  for (i = 0; i < LL_POOL_CAP; i++) {
+    l->used[i] = 0;
+    l->pool[i].next = (i + 1 < LL_POOL_CAP) ? i + 1 : -1;
+  }
 }
 
 int ll_push_front(LinkedList *l, int v) {
@@ -164,23 +217,22 @@ int ll_push_front(LinkedList *l, int v) {
   l->pool[idx].value = v;
   l->pool[idx].next = l->head;
   l->head = idx;
+  if (l->tail == -1) l->tail = idx;
   l->size++;
   return 0;
 }
 
 int ll_push_back(LinkedList *l, int v) {
   int idx = ll_alloc(l);
-  int cur;
   if (idx < 0) return -1;
   l->pool[idx].value = v;
   l->pool[idx].next = -1;
-  if (l->head == -1) {
+  if (l->tail == -1) {
     l->head = idx;
   } else {
-    cur = l->head;
-    while (l->pool[cur].next != -1) cur = l->pool[cur].next;
-    l->pool[cur].next = idx;
+    l->pool[l->tail].next = idx;
   }
+  l->tail = idx;
   l->size++;
   return 0;
 }
@@ -195,7 +247,8 @@ int ll_delete(LinkedList *l, int v) {
       } else {
         l->pool[prev].next = l->pool[cur].next;
       }
-      l->used[cur] = 0;
+      if (cur == l->tail) l->tail = prev;
+      ll_release(l, cur);
       l->size--;
       return 1;
     }
@@ -231,63 +284,112 @@ int ll_at(const LinkedList *l, int i) {
 /* ========================= Binary search tree ===================== */
 
 static int bst_alloc(BST *t) {
-  int i;
-  for (i = 0; i < BST_POOL_CAP; i++) {
-    if (!t->used[i]) {
-      t->used[i] = 1;
-      t->pool[i].key = 0;
-      t->pool[i].left = -1;
-      t->pool[i].right = -1;
-      return i;
-    }
-  }
-  return -1;
+  int i = t->free_head;
+  if (i == -1) return -1;
+  t->free_head = t->pool[i].left;
+  t->used[i] = 1;
+  t->pool[i].key = 0;
+  t->pool[i].left = -1;
+  t->pool[i].right = -1;
+  t->pool[i].height = 0;
+  return i;
+}
+
+static void bst_release(BST *t, int i) {
+  t->used[i] = 0;
+  t->pool[i].left = t->free_head;
+  t->free_head = i;
 }
 
 void bst_init(BST *t) {
   int i;
   t->root = -1;
+  t->free_head = 0;
   t->size = 0;
-  for (i = 0; i < BST_POOL_CAP; i++) t->used[i] = 0;
+  for (i = 0; i < BST_POOL_CAP; i++) {
+    t->used[i] = 0;
+    t->pool[i].left = (i + 1 < BST_POOL_CAP) ? i + 1 : -1;
+    t->pool[i].right = -1;
+    t->pool[i].height = 0;
+  }
 }
 
 void bst_clear(BST *t) { bst_init(t); }
 
-int bst_insert(BST *t, int key) {
-  int cur;
-  if (t->root == -1) {
-    int i = bst_alloc(t);
-    if (i < 0) return -1;
-    t->pool[i].key = key;
-    t->root = i;
-    t->size = 1;
+static int bst_node_height(const BST *t, int node) {
+  return node == -1 ? -1 : t->pool[node].height;
+}
+
+static void bst_update_height(BST *t, int node) {
+  int lh = bst_node_height(t, t->pool[node].left);
+  int rh = bst_node_height(t, t->pool[node].right);
+  t->pool[node].height = 1 + (lh > rh ? lh : rh);
+}
+
+static int bst_balance(const BST *t, int node) {
+  return bst_node_height(t, t->pool[node].left) -
+         bst_node_height(t, t->pool[node].right);
+}
+
+static int bst_rotate_right(BST *t, int root) {
+  int next = t->pool[root].left;
+  int middle = t->pool[next].right;
+  t->pool[next].right = root;
+  t->pool[root].left = middle;
+  bst_update_height(t, root);
+  bst_update_height(t, next);
+  return next;
+}
+
+static int bst_rotate_left(BST *t, int root) {
+  int next = t->pool[root].right;
+  int middle = t->pool[next].left;
+  t->pool[next].left = root;
+  t->pool[root].right = middle;
+  bst_update_height(t, root);
+  bst_update_height(t, next);
+  return next;
+}
+
+static int bst_rebalance(BST *t, int root) {
+  int balance;
+  bst_update_height(t, root);
+  balance = bst_balance(t, root);
+  if (balance > 1) {
+    if (bst_balance(t, t->pool[root].left) < 0)
+      t->pool[root].left = bst_rotate_left(t, t->pool[root].left);
+    return bst_rotate_right(t, root);
+  }
+  if (balance < -1) {
+    if (bst_balance(t, t->pool[root].right) > 0)
+      t->pool[root].right = bst_rotate_right(t, t->pool[root].right);
+    return bst_rotate_left(t, root);
+  }
+  return root;
+}
+
+static int bst_insert_rec(BST *t, int *slot, int key) {
+  int node = *slot;
+  int result;
+  if (node == -1) {
+    node = bst_alloc(t);
+    if (node == -1) return -1;
+    t->pool[node].key = key;
+    *slot = node;
+    t->size++;
     return 0;
   }
-  cur = t->root;
-  for (;;) {
-    if (key == t->pool[cur].key) return 1; /* duplicate */
-    if (key < t->pool[cur].key) {
-      if (t->pool[cur].left == -1) {
-        int n = bst_alloc(t);
-        if (n < 0) return -1;
-        t->pool[n].key = key;
-        t->pool[cur].left = n;
-        t->size++;
-        return 0;
-      }
-      cur = t->pool[cur].left;
-    } else {
-      if (t->pool[cur].right == -1) {
-        int n = bst_alloc(t);
-        if (n < 0) return -1;
-        t->pool[n].key = key;
-        t->pool[cur].right = n;
-        t->size++;
-        return 0;
-      }
-      cur = t->pool[cur].right;
-    }
-  }
+  if (key == t->pool[node].key) return 1;
+  if (key < t->pool[node].key)
+    result = bst_insert_rec(t, &t->pool[node].left, key);
+  else
+    result = bst_insert_rec(t, &t->pool[node].right, key);
+  if (result == 0) *slot = bst_rebalance(t, node);
+  return result;
+}
+
+int bst_insert(BST *t, int key) {
+  return bst_insert_rec(t, &t->root, key);
 }
 
 int bst_contains(const BST *t, int key) {
@@ -312,33 +414,31 @@ int bst_search_depth(const BST *t, int key) {
 
 static int bst_delete_rec(BST *t, int *slot, int key) {
   int cur = *slot;
+  int deleted;
   if (cur == -1) return 0;
-  if (key < t->pool[cur].key) return bst_delete_rec(t, &t->pool[cur].left, key);
-  if (key > t->pool[cur].key) return bst_delete_rec(t, &t->pool[cur].right, key);
-
-  if (t->pool[cur].left == -1 && t->pool[cur].right == -1) {
-    *slot = -1;
-  } else if (t->pool[cur].left == -1) {
-    *slot = t->pool[cur].right;
-  } else if (t->pool[cur].right == -1) {
-    *slot = t->pool[cur].left;
-  } else {
-    /* two children: replace key with inorder successor (leftmost of right) */
-    int parent = cur;
-    int succ = t->pool[cur].right;
-    int *succ_slot;
-    while (t->pool[succ].left != -1) {
-      parent = succ;
-      succ = t->pool[succ].left;
-    }
-    t->pool[cur].key = t->pool[succ].key;
-    succ_slot = (parent == cur) ? &t->pool[cur].right : &t->pool[parent].left;
-    *succ_slot = t->pool[succ].right;
-    t->used[succ] = 0;
-    t->size--;
-    return 1;
+  if (key < t->pool[cur].key) {
+    deleted = bst_delete_rec(t, &t->pool[cur].left, key);
+    if (deleted) *slot = bst_rebalance(t, cur);
+    return deleted;
   }
-  t->used[cur] = 0;
+  if (key > t->pool[cur].key) {
+    deleted = bst_delete_rec(t, &t->pool[cur].right, key);
+    if (deleted) *slot = bst_rebalance(t, cur);
+    return deleted;
+  }
+
+  if (t->pool[cur].left != -1 && t->pool[cur].right != -1) {
+    /* two children: replace key with inorder successor (leftmost of right) */
+    int succ = t->pool[cur].right;
+    while (t->pool[succ].left != -1) succ = t->pool[succ].left;
+    t->pool[cur].key = t->pool[succ].key;
+    deleted = bst_delete_rec(t, &t->pool[cur].right, t->pool[succ].key);
+    if (deleted) *slot = bst_rebalance(t, cur);
+    return deleted;
+  }
+
+  *slot = t->pool[cur].left != -1 ? t->pool[cur].left : t->pool[cur].right;
+  bst_release(t, cur);
   t->size--;
   return 1;
 }
@@ -347,15 +447,7 @@ int bst_delete(BST *t, int key) { return bst_delete_rec(t, &t->root, key); }
 
 int bst_size(const BST *t) { return t->size; }
 
-static int bst_height_rec(const BST *t, int node) {
-  int lh, rh;
-  if (node == -1) return -1;
-  lh = bst_height_rec(t, t->pool[node].left);
-  rh = bst_height_rec(t, t->pool[node].right);
-  return 1 + ((lh > rh) ? lh : rh);
-}
-
-int bst_height(const BST *t) { return bst_height_rec(t, t->root); }
+int bst_height(const BST *t) { return bst_node_height(t, t->root); }
 
 static int bst_inorder_rec(const BST *t, int node, int *out, int cap, int n) {
   if (node == -1 || n >= cap) return n;

@@ -1,4 +1,4 @@
-import { api } from "@/convex/_generated/api";
+import { api } from "@/lib/api";
 import { AppFooter } from "@/components/AppShell";
 import PublicHeader from "@/components/PublicHeader";
 import { ClayBadge } from "@/components/ui-clay";
@@ -26,7 +26,7 @@ import {
   Truck,
   Users,
 } from "lucide-react";
-import { useQuery } from "convex/react";
+import { useQuery } from "@/lib/c-api";
 import { Link, useNavigate } from "react-router";
 
 const fadeUp = {

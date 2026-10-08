@@ -29,6 +29,13 @@ export interface CWasmExports {
   c_queue_size(): number;
   c_queue_at(i: number): number;
   c_queue_clear(): void;
+  c_deque_push_front(v: number): number;
+  c_deque_push_back(v: number): number;
+  c_deque_pop_front(): number;
+  c_deque_pop_back(): number;
+  c_deque_size(): number;
+  c_deque_at(i: number): number;
+  c_deque_clear(): void;
   c_pq_insert(id: number, prio: number): number;
   c_pq_extract(): number;
   c_pq_extract_prio(): number;
@@ -79,7 +86,7 @@ export class CEngine {
   /* ------------------------------ memory ------------------------------ */
 
   private i32(ptr: number): Int32Array {
-    return new Int32Array(this.ex.memory.buffer);
+    return new Int32Array(this.ex.memory.buffer, ptr);
   }
 
   readCString(ptr: number): string {
@@ -96,7 +103,11 @@ export class CEngine {
   trace(): string[] {
     const len = this.ex.c_trace_len();
     if (len <= 0) return [];
-    const bytes = new Uint8Array(this.ex.memory.buffer, this.ex.c_trace_ptr(), len);
+    const bytes = new Uint8Array(
+      this.ex.memory.buffer,
+      this.ex.c_trace_ptr(),
+      len,
+    );
     return this.decoder.decode(bytes).split("\n").filter(Boolean);
   }
 
@@ -160,6 +171,32 @@ export class CEngine {
     this.ex.c_queue_clear();
   }
 
+  /* ------------------------------- deque ------------------------------- */
+
+  dequePushFront(v: number): number {
+    return this.ex.c_deque_push_front(v);
+  }
+  dequePushBack(v: number): number {
+    return this.ex.c_deque_push_back(v);
+  }
+  dequePopFront(): number {
+    return this.ex.c_deque_pop_front();
+  }
+  dequePopBack(): number {
+    return this.ex.c_deque_pop_back();
+  }
+  dequeSize(): number {
+    return this.ex.c_deque_size();
+  }
+  dequeAll(): number[] {
+    return Array.from({ length: this.dequeSize() }, (_, i) =>
+      this.ex.c_deque_at(i),
+    );
+  }
+  dequeClear(): void {
+    this.ex.c_deque_clear();
+  }
+
   /* -------------------------- priority queue -------------------------- */
 
   pqInsert(id: number, priority: number): number {
@@ -179,7 +216,11 @@ export class CEngine {
   pqHeap(): HeapSlot[] {
     const n = this.ex.c_pq_size();
     const out: HeapSlot[] = [];
-    for (let i = 0; i < n; i++) out.push({ id: this.ex.c_pq_id_at(i), priority: this.ex.c_pq_prio_at(i) });
+    for (let i = 0; i < n; i++)
+      out.push({
+        id: this.ex.c_pq_id_at(i),
+        priority: this.ex.c_pq_prio_at(i),
+      });
     return out;
   }
   pqClear(): void {
@@ -291,7 +332,8 @@ export function loadCEngine(): Promise<CEngine> {
   if (!enginePromise) {
     enginePromise = (async () => {
       const res = await fetch(WASM_URL);
-      if (!res.ok) throw new Error(`Could not load ds.wasm (HTTP ${res.status})`);
+      if (!res.ok)
+        throw new Error(`Could not load ds.wasm (HTTP ${res.status})`);
       const bytes = await res.arrayBuffer();
       const { instance } = await WebAssembly.instantiate(bytes, {});
       const exports = instance.exports as unknown as CWasmExports;

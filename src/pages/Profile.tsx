@@ -1,50 +1,28 @@
-import { api } from "@/convex/_generated/api";
+import { api } from "@/lib/api";
 import { AppShell, roleLabel } from "@/components/AppShell";
 import { ClayBadge, PageHeader } from "@/components/ui-clay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useAuth } from "@/hooks/use-auth";
-import { cn } from "@/lib/utils";
 import {
   BellRing,
-  HeartHandshake,
   HelpCircle,
   KeyRound,
-  Leaf,
   Lock,
   Save,
-  Store,
   UserRound,
 } from "lucide-react";
-import { useMutation } from "convex/react";
+import { useMutation } from "@/lib/c-api";
 import { useState } from "react";
 import { toast } from "sonner";
-
-type AccountType = "donor" | "ngo" | "admin";
-
-const ROLE_OPTIONS: Array<{ value: AccountType; label: string; icon: typeof Store; hint: string }> = [
-  { value: "donor", label: "Donor", icon: Store, hint: "Post surplus food" },
-  { value: "ngo", label: "NGO / Recipient", icon: HeartHandshake, hint: "Request & distribute" },
-  { value: "admin", label: "Admin", icon: Leaf, hint: "Oversee the network" },
-];
 
 export default function Profile() {
   const { user } = useAuth();
   const update = useMutation(api.profile.update);
   const [busy, setBusy] = useState(false);
   const [notif, setNotif] = useState({ near: true, claimed: true, digest: false });
-
-  const accountType: AccountType =
-    user?.accountType === "ngo" || user?.accountType === "admin" ? user.accountType : "donor";
 
   const onSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -55,7 +33,6 @@ export default function Profile() {
         name: String(form.get("name") ?? "").trim(),
         organization: String(form.get("organization") ?? "").trim(),
         location: String(form.get("location") ?? "").trim(),
-        accountType: String(form.get("accountType") ?? accountType) as AccountType,
       });
       toast.success("Profile updated");
     } catch (err) {
@@ -77,7 +54,7 @@ export default function Profile() {
       <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6">
         <PageHeader
           title="Profile & settings"
-          subtitle="Your identity in the network — and which of the three experiences you use."
+          subtitle="Update your local demo profile. Sign out from the account menu to choose a different demo login."
         />
 
         <div className="mt-7 grid gap-6 lg:grid-cols-[1.6fr_1fr]">
@@ -85,7 +62,7 @@ export default function Profile() {
           <form onSubmit={onSubmit} className="clay p-6 sm:p-8">
             <h3 className="font-extrabold">Profile information</h3>
             <p className="text-xs text-muted-foreground">
-              Verified by the backend on every protected action.
+              Used to label donations and requests in this local demo.
             </p>
 
             <div className="mt-5 grid gap-5 sm:grid-cols-2">
@@ -117,37 +94,11 @@ export default function Profile() {
               </div>
 
               <div className="space-y-2 sm:col-span-2">
-                <Label>Role experience</Label>
-                <input type="hidden" name="accountType" value={accountType} />
-                <div className="grid gap-3 sm:grid-cols-3">
-                  {ROLE_OPTIONS.map((r) => (
-                    <button
-                      key={r.value}
-                      type="button"
-                      onClick={() =>
-                        void update({ accountType: r.value })
-                          .then(() => toast.success(`Switched to the ${r.label} experience`))
-                          .catch((err) =>
-                            toast.error(err instanceof Error ? err.message : "Could not switch"),
-                          )
-                      }
-                      className={cn(
-                        "rounded-2xl p-4 text-left transition-all",
-                        accountType === r.value
-                          ? "clay-inset"
-                          : "bg-[#f4ede2] hover:bg-[#efe8db]",
-                      )}
-                    >
-                      <r.icon
-                        className={cn(
-                          "size-4",
-                          accountType === r.value ? "text-[#c07f1d]" : "text-muted-foreground",
-                        )}
-                      />
-                      <p className="mt-2 text-sm font-extrabold">{r.label}</p>
-                      <p className="text-[11px] font-semibold text-muted-foreground">{r.hint}</p>
-                    </button>
-                  ))}
+                <Label>Signed-in demo account</Label>
+                <div className="clay-inset flex items-center gap-3 px-4 py-3">
+                  <UserRound className="size-4 text-primary" />
+                  <span className="text-sm font-bold">{roleLabel(user?.accountType)}</span>
+                  <span className="text-xs text-muted-foreground">Sign out to switch accounts.</span>
                 </div>
               </div>
             </div>
@@ -209,11 +160,11 @@ export default function Profile() {
               <div className="mt-4 space-y-3 text-sm">
                 <p className="clay-inset flex items-center gap-2 px-4 py-3">
                   <KeyRound className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="font-semibold">Passwordless email codes (OTP)</span>
+                  <span className="font-semibold">Shared local demo credentials</span>
                 </p>
                 <p className="flex items-center gap-2 text-muted-foreground">
                   <HelpCircle className="size-4 shrink-0" />
-                  Roles are enforced server-side on every mutation.
+                  Demo passwords are visible in the app and are not for real accounts.
                 </p>
               </div>
             </div>
