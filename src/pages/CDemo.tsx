@@ -46,6 +46,7 @@ type Donation = {
   id: number;
   title: string;
   donorId?: string;
+  donorName?: string;
   quantity: number;
   location: string;
   expires_in_minutes: number;
@@ -138,7 +139,7 @@ function StructureCard({ title, note, children }: { title: string; note: string;
 
 function Cell({ children, active = false }: { children: ReactNode; active?: boolean }) {
   return (
-    <div className={`clay-inset min-w-20 rounded-xl px-3 py-2 text-center text-xs font-bold ${active ? "ring-2 ring-[#d8a443]" : ""}`}>
+    <div className={`clay-inset min-w-20 shrink-0 rounded-xl px-3 py-2 text-center text-xs font-bold ${active ? "ring-2 ring-[#d8a443]" : ""}`}>
       {children}
     </div>
   );
@@ -252,8 +253,8 @@ export default function CDemo() {
   const [expiresIn, setExpiresIn] = useState("90");
   const [selectedDonation, setSelectedDonation] = useState("");
   const [requestedQuantity, setRequestedQuantity] = useState("1");
-  const [searchId, setSearchId] = useState("");
-  const [searchResult, setSearchResult] = useState<{ found: boolean; depth: number } | null>(null);
+  const [bstQuery, setBstQuery] = useState("");
+  const [searchResult, setSearchResult] = useState<{ id: number; found: boolean; depth: number } | null>(null);
   const [graphTraversals, setGraphTraversals] = useState<{ bfs: number[]; dfs: number[] } | null>(null);
   const [graphStart, setGraphStart] = useState("0");
   const [selectedDispatch, setSelectedDispatch] = useState("");
@@ -417,10 +418,8 @@ export default function CDemo() {
       donor_name: donorName.trim() || user?.organization || user?.name || "Community donor",
     }).then((result) => {
       if (result) {
-        const created = result as { id?: number };
         setTitle("");
         setLocation("");
-        if (created.id) setSearchId(String(created.id));
       }
     });
   };
@@ -440,15 +439,42 @@ export default function CDemo() {
 
   const searchBst = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const id = Number(searchId);
-    if (!Number.isInteger(id) || id <= 0) return;
+    const query = bstQuery.trim();
+    const numericId = Number(query);
+    const byId = /^\d+$/.test(query)
+      ? snapshot?.donations.find((item) => item.id === numericId)
+      : undefined;
+    const matchingDonations = byId
+      ? [byId]
+      : (snapshot?.donations ?? []).filter((item) =>
+        [item.title, item.donorName, item.location]
+          .some((value) => value?.toLocaleLowerCase() === query.toLocaleLowerCase()),
+      );
+
+    if (!matchingDonations.length) {
+      setSearchResult(null);
+      setError(`No donation matches “${query}”. Search by exact food name, donor, location, or donation ID.`);
+      return;
+    }
+    if (matchingDonations.length > 1) {
+      setSearchResult(null);
+      setError(`“${query}” matches multiple donations. Search with a donation ID or a more specific name.`);
+      return;
+    }
+
+    const { id } = matchingDonations[0];
+    setSearchResult(null);
+    setError("");
     setBusy(true);
     void getJson<{ id: number; found: boolean; depth: number }>(`/api/bst/search?id=${id}`)
       .then((result) => {
         setSearchResult(result);
-        setError("");
       })
-      .catch((failure: unknown) => setError(failure instanceof Error ? failure.message : "BST search failed."))
+      .catch((failure: unknown) => {
+        const message = failure instanceof Error ? failure.message : "BST search failed.";
+        setError(message);
+        toast.error(message);
+      })
       .finally(() => setBusy(false));
   };
 
@@ -564,7 +590,52 @@ export default function CDemo() {
           </section>
         </div>
 
-        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-2">
+          <div className="md:col-span-2">
+            <StructureCard title="Graph · distribution network" note="Node IDs stay the same in both traversal orders, making BFS and DFS easy to compare.">
+              {snapshot?.graph.names.length ? (
+                <div className="grid items-center gap-5 lg:grid-cols-2">
+                  <GraphDiagram graph={snapshot.graph} visitOrder={[...shownGraphTraversals.bfs, ...shownGraphTraversals.dfs]} />
+                  <div>
+                    <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
+                      <label className="text-xs font-bold" htmlFor="graph-start">Start traversal at
+                        <select
+                          id="graph-start"
+                          className="clay-inset mt-1 block h-10 w-full rounded-xl px-3 text-xs"
+                          value={graphStart}
+                          onChange={(event) => setGraphStart(event.target.value)}
+                        >
+                          {graphNames.map((name, index) => <option key={`${name}-${index}`} value={index}>{index} · {name}</option>)}
+                        </select>
+                      </label>
+                      <Button variant="outline" disabled={busy} onClick={traverseGraph}>Compare BFS + DFS</Button>
+                    </div>
+                    <div className="mt-4 space-y-3 border-t border-border pt-3">
+                      {(["bfs", "dfs"] as const).map((mode) => (
+                        <div key={mode}>
+                          <p className="mb-1 text-xs font-extrabold">{mode.toUpperCase()} order</p>
+                          {shownGraphTraversals[mode].length ? (
+                            <ol className="flex flex-wrap items-center gap-1.5">
+                              {shownGraphTraversals[mode].map((node, index) => (
+                                <li key={`${mode}-${node}-${index}`} className="flex items-center gap-1.5">
+                                  <span className="clay-inset rounded-lg px-2 py-1 text-[11px]">
+                                    <strong className="text-[#9b641a]">{node}.</strong> {graphNames[node] ?? "Unknown"}
+                                  </span>
+                                  {index < shownGraphTraversals[mode].length - 1 && <ArrowRight className="size-3 text-muted-foreground" />}
+                                </li>
+                              ))}
+                            </ol>
+                          ) : <p className="text-xs text-muted-foreground">Select a start node and compare traversals.</p>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : <p className="text-sm text-muted-foreground">Create a donation to add the food hub and donor nodes.</p>}
+              <p className="mt-3 flex items-center gap-1 text-[10px] text-muted-foreground"><ArrowDown className="size-3" /> {health?.structures.graph_nodes ?? 0} nodes in C graph</p>
+            </StructureCard>
+          </div>
+
           <StructureCard title="Stack · recent actions" note="LIFO · TOP is the next item to pop">
             {snapshot?.history.length ? (
               <div className="mx-auto flex max-w-52 flex-col items-center gap-1">
@@ -578,11 +649,16 @@ export default function CDemo() {
 
           <StructureCard title="Queue · pickup requests" note="FIFO · FRONT leaves first, new requests join the REAR">
             {pending.length ? (
-              <div className="overflow-x-auto pb-2">
-                <div className="flex w-max items-center gap-2">
-                  <span className="text-[10px] font-extrabold text-[#9b641a]">FRONT</span>
-                  {pending.map((item, index) => <Cell key={item.id} active={index === 0}>#{item.id}<br />{item.donationTitle}</Cell>)}
-                  <span className="text-[10px] font-extrabold text-muted-foreground">REAR</span>
+              <div className="overflow-x-auto overscroll-x-contain pb-2">
+                <div className="flex w-max flex-nowrap items-center gap-2">
+                  <span className="shrink-0 text-[10px] font-extrabold text-[#9b641a]">FRONT</span>
+                {pending.map((item, index) => (
+                  <div key={item.id} className={`clay-inset w-28 shrink-0 rounded-xl p-2 text-center ${index === 0 ? "ring-2 ring-[#d8a443]" : ""}`}>
+                    <p className="truncate text-xs font-bold">#{item.id} · {item.donationTitle}</p>
+                    <p className="mt-1 text-[10px] text-muted-foreground">{item.status}</p>
+                  </div>
+                ))}
+                  <span className="shrink-0 text-[10px] font-extrabold text-muted-foreground">REAR</span>
                 </div>
               </div>
             ) : <p className="text-sm text-muted-foreground">No pending requests. Submit a pickup request above.</p>}
@@ -592,19 +668,20 @@ export default function CDemo() {
           <StructureCard title="Deque · dispatch" note="Double-ended queue · urgent end at FRONT, routine end at BACK">
             {snapshot?.dispatch.length ? (
               <>
-                <div className="space-y-1.5">
+                <div className="overflow-x-auto overscroll-x-contain pb-2">
+                  <div className="flex w-max flex-nowrap items-center gap-2">
+                    <span className="shrink-0 text-[10px] font-extrabold text-[#9b641a]">FRONT</span>
                   {snapshot.dispatch.map((item, index) => {
                     const request = requestById.get(item.id);
                     return (
-                      <div key={item.id} className="clay-inset flex min-w-0 items-center gap-3 rounded-xl px-3 py-2">
-                        <span className={`w-12 shrink-0 text-[9px] font-extrabold uppercase ${index === 0 || index === snapshot.dispatch.length - 1 ? "text-[#9b641a]" : "text-muted-foreground"}`}>
-                          {index === 0 ? "FRONT" : index === snapshot.dispatch.length - 1 ? "BACK" : `#${index + 1}`}
-                        </span>
-                        <span className="min-w-0 flex-1 truncate text-xs font-bold">Request #{item.id} · {request?.donationTitle ?? `Food #${item.donation_id}`}</span>
-                        <span className="shrink-0 text-[10px] text-muted-foreground">{item.status}</span>
+                      <div key={item.id} className={`clay-inset w-28 shrink-0 rounded-xl p-2 text-center ${index === 0 ? "ring-2 ring-[#d8a443]" : ""}`}>
+                        <p className="truncate text-xs font-bold">#{item.id} · {request?.donationTitle ?? `Food #${item.donation_id}`}</p>
+                        <p className="mt-1 text-[10px] text-muted-foreground">{item.status}</p>
                       </div>
                     );
                   })}
+                    <span className="shrink-0 text-[10px] font-extrabold text-muted-foreground">BACK</span>
+                  </div>
                 </div>
                 {canAdmin && (
                   <div className="mt-3 grid gap-2 border-t border-border pt-3">
@@ -634,11 +711,14 @@ export default function CDemo() {
 
           <StructureCard title="Priority queue · donations" note="Min-heap · donation expiring soonest is highest priority">
             {availableDonations.length ? (
-              <div className="overflow-x-auto pb-2">
-                <div className="flex w-max items-center gap-2">
-                  <span className="text-[10px] font-extrabold text-[#9b641a]">NEXT</span>
+              <div className="overflow-x-auto overscroll-x-contain pb-2">
+                <div className="flex w-max flex-nowrap items-center gap-2">
+                  <span className="shrink-0 text-[10px] font-extrabold text-[#9b641a]">NEXT</span>
                   {availableDonations.map((item, index) => (
-                    <Cell key={item.id} active={index === 0}>#{item.id} · {item.title}<br />{item.expires_in_minutes} min</Cell>
+                    <div key={item.id} className={`clay-inset w-28 shrink-0 rounded-xl p-2 text-center ${index === 0 ? "ring-2 ring-[#d8a443]" : ""}`}>
+                      <p className="truncate text-xs font-bold">#{item.id} · {item.title}</p>
+                      <p className="mt-1 text-[10px] text-muted-foreground">{item.expires_in_minutes} min left</p>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -653,13 +733,28 @@ export default function CDemo() {
               </div>
             ) : <p className="text-sm text-muted-foreground">Add a donation to insert its ID into the tree.</p>}
             <form onSubmit={searchBst} className="mt-3 flex gap-2">
-              <Input aria-label="Donation ID to search in BST" type="number" min="1" value={searchId} onChange={(event) => setSearchId(event.target.value)} placeholder="Donation ID" required />
-              <Button type="submit" variant="outline" disabled={busy}><Search className="size-4" /> Find</Button>
+              <label className="sr-only" htmlFor="bst-search">Search by food, donor, location, or donation ID</label>
+              <Input
+                id="bst-search"
+                className="min-w-0 flex-1"
+                value={bstQuery}
+                onChange={(event) => {
+                  setBstQuery(event.target.value);
+                  setSearchResult(null);
+                }}
+                placeholder="Food, donor, location, or ID"
+                aria-describedby="bst-search-hint"
+                required
+              />
+              <Button type="submit" variant="outline" disabled={busy || !donations.length}><Search className="size-4" /> Search BST</Button>
             </form>
+            <p id="bst-search-hint" className="mt-1 text-[10px] text-muted-foreground">Type a food name, donor, location, or ID. Example: Breakfast packs.</p>
             {searchResult && (
               <p className="mt-2 flex items-center gap-2 text-xs">
                 {searchResult.found ? <Check className="size-4 text-green-700" /> : <CircleDot className="size-4 text-muted-foreground" />}
-                {searchResult.found ? `Found at depth ${searchResult.depth}.` : "ID not found in the BST."}
+                {searchResult.found
+                  ? `Found donation #${searchResult.id} (${donations.find((item) => item.id === searchResult.id)?.title ?? "donation"}) at depth ${searchResult.depth}.`
+                  : `Donation #${searchResult.id} was not found in the BST.`}
               </p>
             )}
             <p className="mt-2 text-[10px] text-muted-foreground">Size: {snapshot?.bst.size ?? 0} · Height: {snapshot?.bst.height ?? -1}</p>
@@ -695,46 +790,6 @@ export default function CDemo() {
             <p className="mt-3 text-[10px] text-muted-foreground">{health?.structures.linked_list ?? 0} route nodes</p>
           </StructureCard>
 
-          <StructureCard title="Graph · distribution network" note="Node IDs stay the same in both traversal orders, making BFS and DFS easy to compare.">
-            {snapshot?.graph.names.length ? (
-              <>
-                <GraphDiagram graph={snapshot.graph} visitOrder={[...shownGraphTraversals.bfs, ...shownGraphTraversals.dfs]} />
-                <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
-                  <label className="text-xs font-bold" htmlFor="graph-start">Start traversal at
-                    <select
-                      id="graph-start"
-                      className="clay-inset mt-1 block h-10 w-full rounded-xl px-3 text-xs"
-                      value={graphStart}
-                      onChange={(event) => setGraphStart(event.target.value)}
-                    >
-                      {graphNames.map((name, index) => <option key={`${name}-${index}`} value={index}>{index} · {name}</option>)}
-                    </select>
-                  </label>
-                  <Button variant="outline" disabled={busy} onClick={traverseGraph}>Compare BFS + DFS</Button>
-                </div>
-                <div className="mt-4 space-y-3 border-t border-border pt-3">
-                  {(["bfs", "dfs"] as const).map((mode) => (
-                    <div key={mode}>
-                      <p className="mb-1 text-xs font-extrabold">{mode.toUpperCase()} order</p>
-                      {shownGraphTraversals[mode].length ? (
-                        <ol className="flex flex-wrap items-center gap-1.5">
-                          {shownGraphTraversals[mode].map((node, index) => (
-                            <li key={`${mode}-${node}-${index}`} className="flex items-center gap-1.5">
-                              <span className="clay-inset rounded-lg px-2 py-1 text-[11px]">
-                                <strong className="text-[#9b641a]">Node {node}</strong> · {graphNames[node] ?? "Unknown"}
-                              </span>
-                              {index < shownGraphTraversals[mode].length - 1 && <ArrowRight className="size-3 text-muted-foreground" />}
-                            </li>
-                          ))}
-                        </ol>
-                      ) : <p className="text-xs text-muted-foreground">Select a start node and compare traversals.</p>}
-                    </div>
-                  ))}
-                </div>
-              </>
-            ) : <p className="text-sm text-muted-foreground">Create a donation to add the food hub and donor nodes.</p>}
-            <p className="mt-3 flex items-center gap-1 text-[10px] text-muted-foreground"><ArrowDown className="size-3" /> {health?.structures.graph_nodes ?? 0} nodes in C graph</p>
-          </StructureCard>
         </div>
 
         <p className="mt-5 flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">

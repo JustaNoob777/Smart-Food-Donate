@@ -62,6 +62,27 @@ Demo sign-ins: `donor` / `donor123`, `ngo` / `ngo123`, and `admin` /
 
 Useful commands: `make check`, `make test`, `make api`, and `make web`.
 
+## Publish a free demo
+
+The web app can be hosted on Vercel, but the native POSIX C API needs its own
+service. This repository includes a Render Blueprint for the API
+(`render.yaml` and `c-backend/Dockerfile`) and Vercel settings for the SPA
+(`vercel.json`).
+
+1. In Render, create a **Blueprint** from this GitHub repository and deploy
+   `smart-food-donate-c-api-justanoob777`. Wait for its `/api/health` check to
+   pass, then copy the service's `https://...onrender.com` URL.
+2. In Vercel, import this repository. Keep the root directory at `.`, then add
+   the environment variable `VITE_C_API_URL` with the Render service URL and
+   deploy.
+3. If the Render URL changes, update `VITE_C_API_URL` in Vercel and redeploy.
+
+Both services are intended only for sharing this self-study demo. Demo
+accounts and passwords are public, authentication is client-side, the API
+accepts demo roles from requests, and records are held in memory. Do not enter
+personal or sensitive data. Render's free service may sleep while idle; its
+records reset whenever the service restarts.
+
 ---
 
 ## Data structures → product features

@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: smart-food-donate-c-api-justanoob777
+    runtime: docker
+    plan: free
+    dockerfilePath: ./c-backend/Dockerfile
+    dockerContext: ./c-backend
+    healthCheckPath: /api/health
+    autoDeploy: true
