@@ -55,6 +55,7 @@ type Donation = {
 type RequestRow = {
   id: number;
   donation_id: number;
+  ngoId?: string;
   donationTitle: string;
   ngoName: string;
   quantity: number;
@@ -320,6 +321,7 @@ export default function CDemo() {
     setBusy(true);
     let addedDonations = 0;
     let addedRequests = 0;
+    let createdRoute = false;
     try {
       const existingDonations = await getJson<Donation[]>("/api/donations");
       const donationIds = new Map<string, number>();
@@ -335,31 +337,52 @@ export default function CDemo() {
         addedDonations++;
       }
 
-      if (canRequest) {
-        const existingRequests = await getJson<RequestRow[]>("/api/requests");
-        const requestDonorIds = new Set(existingRequests.map((request) => request.donation_id));
-        for (const sample of SAMPLE_DONATIONS.slice(0, 2)) {
-          const donationId = donationIds.get(sample.donor_id);
-          if (!donationId || requestDonorIds.has(donationId)) continue;
-          await postJson("/api/requests", {
+      const existingRequests = await getJson<RequestRow[]>("/api/requests");
+      const requestsByDonation = new Map(existingRequests.map((request) => [request.donation_id, request]));
+      for (const sample of SAMPLE_DONATIONS.slice(0, 3)) {
+        const donationId = donationIds.get(sample.donor_id);
+        if (!donationId || requestsByDonation.has(donationId)) continue;
+        const created = await postJson<{ id: number; donation_id?: number }>("/api/requests", {
             donation_id: donationId,
             ngo_id: 1,
             quantity: 5,
             ngo_ref: "sample-ngo",
             ngo_name: "Kozhikode Relief Centre",
-            account_type: currentRole ?? "guest",
+            account_type: "admin",
           });
-          addedRequests++;
+        const newRequest: RequestRow = {
+          id: created.id,
+          donation_id: donationId,
+          ngoId: "sample-ngo",
+          donationTitle: sample.title,
+          ngoName: "Kozhikode Relief Centre",
+          quantity: 5,
+          status: "PENDING",
+          step: 0,
+          queue_position: existingRequests.length + addedRequests,
+        };
+        requestsByDonation.set(donationId, newRequest);
+        addedRequests++;
+      }
+
+      const currentRoute = await getJson<RouteStep[]>("/api/route");
+      if (!currentRoute.length) {
+        const routeRequest = SAMPLE_DONATIONS.slice(0, 3)
+          .map((sample) => donationIds.get(sample.donor_id))
+          .map((donationId) => donationId ? requestsByDonation.get(donationId) : undefined)
+          .find((request) => request !== undefined);
+        if (routeRequest) {
+          await postJson("/api/requests/advance", {
+            ref: routeRequest.id,
+            account_type: "admin",
+          });
+          createdRoute = true;
         }
       }
 
-      if (addedDonations > 0 || addedRequests > 0) {
+      if (addedDonations > 0 || addedRequests > 0 || createdRoute) {
         setError("");
-        toast.success(
-          canRequest
-            ? `Loaded ${addedDonations} sample donations and ${addedRequests} pickup requests.`
-            : `Loaded ${addedDonations} sample donations. Sign in as NGO or admin to add sample pickup requests.`,
-        );
+        toast.success(`Loaded complete sample data: ${addedDonations} donations, ${addedRequests} pickup requests${createdRoute ? ", and a delivery route" : ""}.`);
         window.dispatchEvent(new Event("foodshare:data-changed"));
       } else {
         toast.info("Sample data is already loaded.");
@@ -368,12 +391,12 @@ export default function CDemo() {
       const message = failure instanceof Error ? failure.message : "Could not load sample data.";
       setError(message);
       toast.error(
-        addedDonations || addedRequests
+        addedDonations || addedRequests || createdRoute
           ? `Some sample data was added, but loading stopped: ${message}`
           : message,
       );
     } finally {
-      if (addedDonations > 0 || addedRequests > 0) await refresh();
+      if (addedDonations > 0 || addedRequests > 0 || createdRoute) await refresh();
       setBusy(false);
     }
   };
@@ -482,12 +505,12 @@ export default function CDemo() {
           <section className="clay rounded-3xl p-5">
             <h2 className="flex items-center gap-2 font-extrabold"><PackagePlus className="size-4" /> Add a food donation</h2>
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-card/70 p-3">
-              <p className="text-xs text-muted-foreground">Want to explore first? Load example hotels, cafes, food, and requests.</p>
+              <p className="text-xs text-muted-foreground">Fill every structure with example hotels, cafes, pickups, and a delivery route.</p>
               <Button type="button" variant="outline" size="sm" disabled={busy || !health} onClick={() => void loadSampleData()}>
-                Load sample data
+                {busy ? "Loading…" : "Load complete example"}
               </Button>
             </div>
-            <p className="mt-2 text-[10px] text-muted-foreground">Safe to click again: it skips sample records already loaded. All data resets when the C server stops.</p>
+            <p className="mt-2 text-[10px] text-muted-foreground">This fills the demo automatically; you can still add your own donations and pickups below. Safe to repeat. Data resets when the C server stops.</p>
             <form onSubmit={addDonation} className="mt-3 grid gap-3 sm:grid-cols-2">
               <label className="text-xs font-bold sm:col-span-2">Food
                 <Input className="mt-1.5" required maxLength={63} value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Vegetable meals" />
