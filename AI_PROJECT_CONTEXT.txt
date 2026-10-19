@@ -1,0 +1,264 @@
+FOODSHARE — SMART FOOD DONATION AND DISTRIBUTION SYSTEM
+PROJECT CONTEXT FOR AI-ASSISTED REPORT WRITING
+
+PURPOSE OF THIS FILE
+Use this file as source material when preparing a school, college, technical, or project report about the FoodShare repository. It summarizes the implemented prototype and its limits. Treat the repository source as authoritative if a detail here and the code differ. Do not invent research results, deployment status, real users, institutional details, or features that are not described here. Leave student name, class, roll number, institution, supervisor, and submission date as placeholders unless the student supplies them.
+
+1. PROJECT OVERVIEW
+
+Project name: FoodShare — Smart Food Donation and Distribution System
+Project type: Educational web application and data-structures demonstration
+Domain: Food donation and distribution; related to United Nations Sustainable Development Goal 2 (Zero Hunger)
+Main idea: Provide a simple interface for donors to post surplus food, NGOs to find and request available donations, and users to follow request and delivery progress. Use core data structures in real application operations and expose them through a C engine lab.
+
+FoodShare is a local demonstration prototype, not a production food logistics service. It illustrates how software could help coordinate food donations. It does not prove a measured reduction in food waste or hunger.
+
+2. PROBLEM, MOTIVATION, AND OBJECTIVES
+
+Usable food may be discarded while nearby community organizations need meals. A basic coordination system can make surplus food visible, order offers by urgency, and represent requests and delivery steps in a structured way. FoodShare is also designed to make common data structures concrete through a food-sharing scenario.
+
+Project objectives:
+- Demonstrate a donor-to-NGO food donation and request workflow.
+- Capture basic donation details: title, food type, quantity, pickup location, expiry, and optional notes.
+- Validate essential input and donation availability.
+- Organize donations and requests with appropriate data structures.
+- Demonstrate delivery progress and a simplified distribution network.
+- Provide an interactive browser lab for inspecting C data-structure operations.
+- Keep the project runnable locally without a hosted account or external database.
+
+3. USERS AND DEMONSTRATION ACCOUNTS
+
+The interface has three local demo account types:
+- Donor: posts and views donations.
+- NGO: browses food and submits requests.
+- Admin/coordinator: sees coordination and dispatch-oriented functions.
+
+Demo logins embedded in the source:
+- username donor, password donor123
+- username ngo, password ngo123
+- username admin, password admin123
+
+These credentials are public demonstration values, not private or secure credentials. The selected identity is stored in browser localStorage. The role model is a user-interface demonstration, not robust authentication or authorization. The native C API does not implement production user accounts, password hashing, or secure identity enforcement.
+
+4. MAIN USER FEATURES
+
+- Landing page with a project introduction, feature overview, and data-structure showcase.
+- Demo sign-in page for donor, NGO, and admin roles.
+- Role-aware dashboard with summary metrics, weekly donation chart, quick links, and recent activity.
+- Donation form that collects food name/type, quantity, location, expiry, and optional notes.
+- Browse page that shows donations, supports text/category filtering, and orders food by expiry urgency. Numeric IDs can be searched and the C BST can report search depth.
+- NGO request flow for available donations, with requests placed in a FIFO queue and represented in the dispatch deque.
+- Delivery tracking page with request status, delivery-step progress, and an illustrative route graphic. The graphic is drawn in the app; it is not a live map or GPS service.
+- Profile page for the local demo profile and sign-out.
+- About page describing the project and its data-structure mapping.
+- C Demo page for viewing backend status and structures, adding donations/pickups, and running graph traversals.
+- The C Demo has an optional sample-data loader. It can create four illustrative donations, up to three pickup requests, and an initial delivery-route step. It skips records it recognizes, so it is safe to repeat. The server still starts empty; sample records are not automatically seeded.
+- FoodShare Operations at /ds reads live data from the C API and presents overview, stack, queue, deque, priority queue, linked-list, BST, and graph views. It supports dispatch reordering, BST lookup, and BFS/DFS traversal.
+- The compiled WebAssembly engine in public/ds.wasm is used by regular donation, browse, tracking, and app-shell interfaces to mirror data-structure operations and show traces. The /ds page itself calls the live C HTTP API for its operations.
+
+5. ROUTES
+
+/          Public landing page
+/auth      Demo sign-in
+/dashboard Signed-in demo dashboard
+/donate    Create a food donation
+/browse    Browse available donations and submit NGO requests
+/track     View requests and advance delivery steps
+/profile   View/update local demo profile and sign out
+/c-demo    Direct backend demonstration
+/ds        Live FoodShare Operations and data-structure views
+/about     Project information
+*          Not-found page
+
+Protected routes use a client-side demo session check. This is not a substitute for server-side access control.
+
+6. TECHNOLOGY STACK AND ARCHITECTURE
+
+Frontend:
+- React 19 and TypeScript
+- Vite development server and production bundler
+- React Router for page routing
+- Tailwind CSS v4 through the Vite plugin, with a claymorphism-inspired visual style
+- Radix UI primitives, Lucide icons, Recharts charts, Framer Motion animations, and Sonner notifications
+- Browser Fetch API for HTTP requests
+- localStorage for the demo user profile
+
+Backend and algorithms:
+- Native C11 application, built with GCC and Make
+- POSIX socket-based HTTP/1.1 JSON server in c-backend/server.c
+- Data-structure implementation in c-backend/ds.c and declarations in c-backend/ds.h
+- The C data-structure source is also compiled into public/ds.wasm through c-backend/wasm_api.c; regular app pages use it for mirrored operations and traces
+- The browser uses TypeScript adapters to call the C HTTP API and poll/refresh its live data
+- There is no database or third-party data service; optional hosting configuration is included for the web app and C API
+
+Typical local ports:
+- Vite frontend: http://localhost:5173
+- C HTTP API: http://localhost:8080
+
+Set VITE_C_API_URL in a local .env file only when the C API uses a different address. The default is http://localhost:8080. Do not add private environment files or secrets to a report or commit.
+
+7. DATA STRUCTURES AND THEIR USE
+
+Stack (LIFO): Records recent backend actions so the newest activity can be displayed first. Basic push/pop/peek operations are constant time, O(1).
+
+Circular queue (FIFO): Preserves request arrival order and supports oldest-first collection. Enqueue/dequeue are O(1).
+
+Deque: Represents the dispatch lane. Urgent requests can be placed at the front and routine requests at the back; operations at either end are O(1).
+
+Priority queue / binary min-heap: Orders donations by time remaining before expiry so the most urgent donation can be shown first. Insert/extract-min are O(log n); inspecting the minimum is O(1).
+
+Singly linked list: Represents ordered delivery route/progress steps. Appending is O(1) because a tail is kept; traversal/search is O(n).
+
+Self-balancing binary search tree (AVL-style): Indexes donation IDs for insertion, lookup, deletion, inorder listing, and search-depth demonstration. Search/update is O(log n) while balanced.
+
+Graph with adjacency matrix: Models a small illustrative donor/hub/NGO network. Breadth-first search and depth-first search are available. With the matrix representation, traversal is O(V^2) for this small graph.
+
+The C structures use fixed-size storage and avoid dynamic allocation in the data-structure library. Capacities are declared in ds.h. The source is shared between the native server and WebAssembly build.
+
+Test coverage note: The native C suite reports 385 checks across six test groups: stack, queue, priority queue, linked list, BST, and graph. The deque is implemented and used by the application, but it is not one of those six test groups according to tests.c.
+
+8. DONATION AND REQUEST RULES
+
+The backend validates required donation fields, including non-empty title and location, positive quantity, and positive expiry duration. The implementation also limits quantity and expiry values to keep inputs bounded (see server.c for exact current limits).
+
+A new donation starts as AVAILABLE and is indexed by ID in the BST and ordered by urgency in the priority queue. A request may only be created for an available donation. Creating a request places it in PENDING state, enqueues the request, and marks the related donation CLAIMED. Dispatch ordering can prioritize donations expiring within two hours, with an override operation available in the API.
+
+Delivery progress is represented through sequential steps. The broad donation lifecycle is:
+AVAILABLE -> CLAIMED -> COLLECTED -> DISTRIBUTED
+
+Request lifecycle includes PENDING, APPROVED, and DELIVERED states. The API can approve/claim work and advance a delivery route. Exact server-side rules should be described from the current implementation rather than assumed to match a commercial logistics workflow.
+
+9. HTTP API SUMMARY
+
+The native server exposes these routes (JSON responses):
+
+GET  /api/health                 Engine and structure status
+GET  /api/stats                  Dashboard totals
+GET  /api/stats/weekly           Weekly totals from current donations
+GET  /api/donations              Donations ordered by expiry urgency
+POST /api/donations              Validate and create a donation
+GET  /api/requests               Requests in queue order
+POST /api/requests               Create a request and claim an available donation
+GET  /api/dispatch               Dispatch lane ordering
+POST /api/dispatch/reorder       Move a pending dispatch item in the deque
+POST /api/requests/claim         Claim/dequeue the oldest request
+POST /api/requests/approve       Approve work in dispatch order
+POST /api/requests/advance       Advance delivery progress
+GET  /api/history                Recent operations from the stack
+GET  /api/bst                    BST size/height and ordered IDs
+GET  /api/bst/search?id=N        Search for an ID and report depth
+GET  /api/route                  Linked-list route traversal
+GET  /api/graph/bfs?from=N       Breadth-first traversal
+GET  /api/graph/dfs?from=N       Depth-first traversal
+
+The /ds page presents these live API operations in a tabbed operations dashboard. The /c-demo page provides direct forms and structure views. Its optional sample-data loader submits ordinary API requests; it is not a server seed command.
+
+This is a teaching API. Do not describe it as a secure public service or production REST platform.
+
+10. DATA STORAGE AND SECURITY LIMITATIONS
+
+- Donations, requests, and server data are stored in process memory. They reset when the C server stops.
+- The demo account and profile are stored in browser localStorage.
+- There is no persistent database, account registration, email verification, password reset, password hashing, or production authentication.
+- The API is intended for an educational demonstration. Some endpoints check a client-supplied demo account_type, which is easy to spoof; it is not robust user authorization. Do not expose it to sensitive traffic or real user data.
+- The optional public demo deployment is not production-hardened. There is no rate limiting or persistent storage guarantee. Render free services may sleep, and in-memory data resets on restarts.
+- The three demo passwords are hard-coded and publicly documented. Never reuse them as real passwords.
+- No actual NGO directory, food safety verification, notification service, payment function, GPS tracking, or live third-party map integration exists.
+- Do not include real personal information or secrets in an academic report.
+
+11. BUILDING AND RUNNING THE PROJECT
+
+Requirements:
+- Node.js 20.19+ or 22.12+ with npm
+- GCC and Make for the native C backend and its tests
+- On Windows, use Ubuntu under WSL2 for the C backend because it uses POSIX sockets
+
+From a fresh clone:
+
+1. git clone https://github.com/JustaNoob777/Smart-Food-Donate.git
+2. cd Smart-Food-Donate
+3. npm ci
+4. In terminal one, run: make api
+5. In terminal two, run: npm run dev
+6. Open http://localhost:5173
+
+Optional online demo setup: render.yaml and c-backend/Dockerfile configure the C API for Render. vercel.json configures the Vite SPA for Vercel. Set VITE_C_API_URL in the Vercel project to the deployed API URL, then build/deploy the frontend. Follow the current README for provider settings; an online demo still has the prototype's security and in-memory-data limitations. No online service is required for local development.
+
+Useful commands:
+- make setup       Clean npm install from package-lock.json
+- make web         Start Vite development server
+- make api         Build/run native C server on port 8080
+- make check       TypeScript project check
+- make test        Run native C data-structure tests
+- make clean       Remove generated C binaries
+- npm run build    Typecheck and create production frontend files in dist/
+- npm run lint     Run ESLint
+
+The app uses the checked-in public/ds.wasm file for browser-side mirrored operations. Rebuilding it is optional for normal use. To rebuild after changing C data-structure source, use c-backend/build-wasm.sh with a compatible wasm-capable clang/WASI SDK installation.
+
+Windows note: Run the clone and commands inside WSL2/Ubuntu, preferably under the WSL home directory rather than a mounted Windows directory. The native C server is not a native Windows build.
+
+12. VALIDATION AND DEMONSTRATION PLAN
+
+A simple classroom demonstration can:
+1. Start the C API and frontend.
+2. Sign in with the donor demo account and create a donation with a future expiry.
+3. Sign out and sign in with the NGO demo account.
+4. Browse the donation, search by title or ID, and submit a request.
+5. View the request in tracking and advance delivery steps.
+6. Inspect dashboard metrics and recent activity.
+7. Open /ds to inspect live backend data structures and use BST search, deque reordering, and graph BFS/DFS. Use C Demo's sample-data loader first if a populated board is needed; it can also add a request and route step.
+8. Stop the server and note that the in-memory records reset.
+
+The repository contains a native C test suite with 385 checks across six data structures. Do not claim that the entire frontend has automated end-to-end coverage unless such tests are added separately.
+
+13. SOURCE FILE MAP
+
+c-backend/ds.h          Data structure types, capacities, and function declarations
+c-backend/ds.c          C data-structure algorithms
+c-backend/server.c      Native POSIX HTTP server and application rules
+c-backend/wasm_api.c    Flat WebAssembly interface and C operation traces
+c-backend/tests.c       Native C unit/check suite
+c-backend/Makefile      Native C build, test, run, clean targets
+c-backend/build-wasm.sh Rebuild public/ds.wasm
+c-backend/Dockerfile   Container build for hosted C API demo
+render.yaml            Render Blueprint for C API demo deployment
+vercel.json            SPA build/output and client-route rewrite config
+src/main.tsx            React application setup and route table
+src/pages/              Route-level user interfaces
+src/components/         Shared app shell and UI components
+src/lib/c-api.ts        Browser-side HTTP/query/mutation adapter for C server
+src/lib/session.ts      Hard-coded demo account and localStorage session model
+src/lib/c-engine.ts     WebAssembly engine wrapper
+src/hooks/use-c-engine.ts Hook connecting pages to the C engine
+src/lib/constants.ts    Shared app constants, including delivery steps
+src/lib/format.ts       Display and formatting helpers
+public/ds.wasm          Compiled C data-structure module used in browser
+README.md               Setup, features, and project documentation
+PROJECT_REPORT.md       Existing short report draft
+project-report.pdf      Generated project report snapshot
+members-report.pdf      Generated member report snapshot
+foodshare-presentation.pptx Project presentation slides
+
+14. SUGGESTED REPORT OUTLINE
+
+An AI-generated report can use this structure:
+- Title page (leave personal/institutional fields blank for the student)
+- Abstract
+- Introduction and background
+- Problem statement
+- Aim and measurable objectives (do not invent measured outcomes)
+- Scope and intended users
+- Requirements and technologies
+- System architecture and module descriptions
+- Data-structure design and application mapping
+- Workflow and API overview
+- Validation and testing (state the actual C suite coverage accurately)
+- Results/demo observations (only observations actually made by the student)
+- Limitations and security/privacy considerations
+- Future improvements
+- Conclusion
+
+Potential future improvements, clearly labeled as future work rather than implemented features: persistent database, secure account authentication and server-side authorization, real NGO onboarding, food safety workflows, notifications, live map/location support, stronger deployment hardening, and broader frontend integration tests.
+
+END OF PROJECT CONTEXT
